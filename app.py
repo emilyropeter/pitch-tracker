@@ -1,11 +1,16 @@
 import streamlit as st
 from supabase import create_client
 from datetime import date
+import os  # <-- add this
 
-# --- Supabase connection ---
-url = "https://oposlbpvxpbjsfqmiuly.supabase.co"   
-key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wb3NsYnB2eHBianNmcW1pdWx5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc4ODA2OTMsImV4cCI6MjA3MzQ1NjY5M30.J0Gs8JWoxpKAaUZFiiIy-gJ5EUmRW3aSdNkuLMYh0QI"                      
-supabase = create_client(url, key)
+# --- Supabase connection (secure for Streamlit Cloud) ---
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+if not SUPABASE_URL or not SUPABASE_KEY:
+    st.error("Supabase credentials not found. Please set them in Streamlit Secrets.")
+else:
+    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 st.title("Baseball Game Tracker")
 
@@ -284,4 +289,5 @@ if pitch_id:
             else:
                 st.error("Failed to save runner event. Please try again.")
 else:
+
     st.info("Save a pitch first before entering runner events.")
