@@ -4,41 +4,45 @@ from supabase import create_client
 from datetime import date
 import os
 
-# ---------- Supabase setup ----------
+st.set_page_config(page_title="Baseball Game Tracker", layout="wide")
+
+# -----------------------
+# Supabase connection
+# -----------------------
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
 if not SUPABASE_URL or not SUPABASE_KEY:
-    st.error("Supabase credentials not found. Please set them in Streamlit Secrets.")
+    st.error("Supabase credentials not found. Please set SUPABASE_URL and SUPABASE_KEY in env / Streamlit Secrets.")
     st.stop()
+
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-st.set_page_config(page_title="Baseball Game Tracker", layout="wide")
-st.title("⚾ Baseball Game Tracker")
-
-# ---------- utility functions ----------
+# -----------------------
+# Utilities
+# -----------------------
 def ensure_player(name, team=None, throws=None, bats=None):
     """Return PlayerID for name, creating if necessary."""
     if not name:
         return None
     res = supabase.table("Players").select("PlayerID").eq("Name", name).execute()
-    rows = res.data
-    if rows:
-        return rows[0]["PlayerID"]
-    # create
+    if res.data:
+        return res.data[0]["PlayerID"]
     payload = {"Name": name}
-    if team:
+    if team is not None:
         payload["Team"] = team
-    if throws:
+    if throws is not None:
         payload["Throws"] = throws
-    if bats:
+    if bats is not None:
         payload["Bats"] = bats
     created = supabase.table("Players").insert(payload).execute()
-    if created.data:
-        return created.data[0]["PlayerID"]
-    return None
+    return created.data[0]["PlayerID"] if created.data else None
 
-def create_atbat(game_id, batter_id, pitcher_id, inning, leadoff=None, leadoff_on=None, play_result=None, runs_scored=0, earned_runs=0, korbb=None):
+def create_game(home, away, gamedate):
+    resp = supabase.table("Games").insert({"HomeTeam": home, "AwayTeam": away, "GameDate": str(gamedate)}).execute()
+    return resp.data[0]["GameID"] if resp.data else None
+
+def create_atbat(game_id, batter_id, pitcher_id, inning, order=None, leadoff=None, leadoff_on=None, play_result=None, runs_scored=0, earned_runs=0, korbb=None):
     payload = {
         "GameID": game_id,
         "BatterID": batter_id,
@@ -47,7 +51,8 @@ def create_atbat(game_id, batter_id, pitcher_id, inning, leadoff=None, leadoff_o
         "RunsScored": runs_scored,
         "EarnedRuns": earned_runs
     }
-    # optional fields only include if set
+    if order is not None:
+        payload["BatterOrder"] = order
     if leadoff is not None:
         payload["LeadOff"] = leadoff
     if leadoff_on is not None:
@@ -59,44 +64,40 @@ def create_atbat(game_id, batter_id, pitcher_id, inning, leadoff=None, leadoff_o
     res = supabase.table("AtBats").insert(payload).execute()
     return res.data[0]["AtBatID"] if res.data else None
 
-def next_pitch_numbers(pitcher_id, atbat_id):
-    # PitchNo = 1 + max PitchNo for that pitcher across DB (global)
-    all_by_pitcher = supabase.table("Pitches").select("PitchNo").eq("PitcherID", pitcher_id).order("PitchID", desc=True).limit(1).execute().data
-    if all_by_pitcher:
-        global_next = all_by_pitcher[0].get("PitchNo", 0) + 1
-    else:
-        global_next = 1
-    # PitchOfAB = count pitches with this AtBatID + 1
-    ab_pitches = supabase.table("Pitches").select("PitchOfAB").eq("AtBatID", atbat_id).execute().data
-    local_next = len(ab_pitches) + 1
-    return global_next, local_next
-
-def compute_wel(balls, strikes):
-    # "Win if count is 0-2 or 1-2, Lose if 2-0 or 2-1 and Early if 0-0,0-1,1-0,1-1"
-    if balls == 0 and strikes == 0: return "E"
-    if balls == 0 and strikes == 1: return "E"
-    if balls == 1 and strikes == 0: return "E"
-    if balls == 1 and strikes == 1: return "E"
-    if balls == 0 and strikes == 2: return "W"
-    if balls == 1 and strikes == 2: return "W"
-    if balls == 2 and strikes == 0: return "L"
-    if balls == 2 and strikes == 1: return "L"
-    # default None
-    return None
-
-def get_lineup_from_db(game_id):
-    """Optionally load lineup saved for a game (not implemented in DB schema)."""
-    # placeholder — we keep lineup in session by default
-    return []
-
-def delete_pitch(pitch_id):
+def delete_last_pitch(pitch_id):
     supabase.table("Pitches").delete().eq("PitchID", pitch_id).execute()
 
-# ---------- session state defaults ----------
+def next_pitch_numbers_for(pitcher_id, atbat_id):
+    # PitchNo: largest PitchNo for pitcher +1 (or 1)
+    res = supabase.table("Pitches").select("PitchNo").eq("PitcherID", pitcher_id).order("PitchNo", desc=True).limit(1).execute()
+    if res.data:
+        pitch_no = (res.data[0].get("PitchNo") or 0) + 1
+    else:
+        pitch_no = 1
+    # PitchOfAB: count existing pitches in this atbat +1
+    res2 = supabase.table("Pitches").select("PitchOfAB").eq("AtBatID", atbat_id).execute()
+    pitch_of_ab = len(res2.data or []) + 1
+    return pitch_no, pitch_of_ab
+
+def compute_wel(balls, strikes):
+    # Early if 0-0,0-1,1-0,1-1 ; Win if 0-2 or 1-2 ; Lose if 2-0 or 2-1
+    if (balls, strikes) in [(0,0),(0,1),(1,0),(1,1)]:
+        return "E"
+    if (balls, strikes) in [(0,2),(1,2)]:
+        return "W"
+    if (balls, strikes) in [(2,0),(2,1)]:
+        return "L"
+    return None
+
+# -----------------------
+# Session state init
+# -----------------------
 if "lineup" not in st.session_state:
-    st.session_state["lineup"] = []  # list of dicts: {"Name","Team","Bats","Order"}
+    st.session_state["lineup"] = []   # list of dicts {Name,Team,Bats,Order}
 if "pitchers" not in st.session_state:
-    st.session_state["pitchers"] = []  # list of dicts {"Name","Team","Throws"}
+    st.session_state["pitchers"] = [] # list of dicts {Name,Throws,Team}
+if "selected_game_id" not in st.session_state:
+    st.session_state["selected_game_id"] = None
 if "current_atbat_id" not in st.session_state:
     st.session_state["current_atbat_id"] = None
 if "balls" not in st.session_state:
@@ -104,211 +105,208 @@ if "balls" not in st.session_state:
 if "strikes" not in st.session_state:
     st.session_state["strikes"] = 0
 if "pitch_history" not in st.session_state:
-    st.session_state["pitch_history"] = []  # stack of pitchIDs
+    st.session_state["pitch_history"] = []  # list of pitchIDs for current atbat, FIFO append
 if "last_pitch_summary" not in st.session_state:
     st.session_state["last_pitch_summary"] = None
+if "last_saved_pitch_id" not in st.session_state:
+    st.session_state["last_saved_pitch_id"] = None
 
-# ---------- 1) Game selection & lineup setup ----------
+# -----------------------
+# Header
+# -----------------------
+st.title("⚾ Baseball Game Tracker")
+st.caption("Set lineup and pitchers in Setup. Use Quick Buttons for realtime pitch entry. Undo last pitch if needed.")
+
+# -----------------------
+# 1 — Game selection & lineup setup
+# -----------------------
 with st.expander("1 — Game Selection & Lineup Setup", expanded=True):
-    # load games
     games = supabase.table("Games").select("*").order("GameDate", desc=True).execute().data or []
-    game_options = {f"{g['GameDate']} - {g['HomeTeam']} vs {g['AwayTeam']}": g["GameID"] for g in games}
-    selected_game = st.selectbox("Select Game", ["-- Add New Game --"] + list(game_options.keys()))
-
-    if selected_game == "-- Add New Game --":
-        st.subheader("Add a New Game")
-        home_team = st.text_input("Home Team")
-        away_team = st.text_input("Away Team")
-        game_date = st.date_input("Game Date", date.today())
+    game_map = {f"{g['GameDate']} - {g['HomeTeam']} vs {g['AwayTeam']}": g["GameID"] for g in games}
+    selected_game_key = st.selectbox("Select Game", ["-- Add New Game --"] + list(game_map.keys()))
+    if selected_game_key == "-- Add New Game --":
+        st.subheader("Add New Game")
+        home = st.text_input("Home Team")
+        away = st.text_input("Away Team")
+        gd = st.date_input("Game Date", date.today())
         if st.button("Save Game"):
-            res = supabase.table("Games").insert({
-                "HomeTeam": home_team,
-                "AwayTeam": away_team,
-                "GameDate": str(game_date)
-            }).execute()
-            if res.data:
-                st.success("Game saved. Please re-select it from the dropdown.")
-                st.experimental_rerun()
+            gid = create_game(home, away, gd)
+            if gid:
+                st.success("Game created. Re-open to select it.")
+                st.rerun()
             else:
-                st.error("Failed to save game.")
+                st.error("Failed to create game.")
         st.stop()
     else:
-        game_id = game_options[selected_game]
-        st.success(f"Selected game: {selected_game}")
+        st.session_state["selected_game_id"] = game_map[selected_game_key]
+        st.success(f"Selected: {selected_game_key}")
 
-    # Lineup setup UI
-    st.markdown("**Lineup setup — add starting 9 (or subs).**\nYou can add hitters here so they're available quickly during the game.")
-    col1, col2, col3 = st.columns([3,2,1])
-    with col1:
-        new_hitter_name = st.text_input("New Hitter Name")
-    with col2:
-        new_hitter_side = st.selectbox("Bats", ["Right", "Left", "Switch"], key="new_hitter_bats")
-    with col3:
-        new_hitter_slot = st.number_input("Lineup Position (1-9)", min_value=1, max_value=99, step=1, value=len(st.session_state["lineup"])+1)
-    add_hitter = st.button("Add Hitter")
-    if add_hitter:
-        if new_hitter_name:
-            # add to DB and session
-            pid = ensure_player(new_hitter_name, team=None, bats=new_hitter_side)
-            st.session_state["lineup"].append({"Name": new_hitter_name, "Team": None, "Bats": new_hitter_side, "Order": int(new_hitter_slot)})
-            # sort lineup by Order
-            st.session_state["lineup"] = sorted(st.session_state["lineup"], key=lambda x: x["Order"])
-            st.success(f"Added hitter {new_hitter_name} to lineup.")
+    st.markdown("### Lineup (starting hitters & subs)")
+    colA, colB, colC = st.columns([3,2,1])
+    with colA:
+        hitter_name = st.text_input("Hitter Name", key="hitter_name")
+    with colB:
+        hitter_bats = st.selectbox("Bats", ["Right", "Left", "Switch"], key="hitter_bats")
+    with colC:
+        hitter_slot = st.number_input("Lineup Slot (1-99)", min_value=1, max_value=99, value=len(st.session_state["lineup"])+1, key="hitter_slot")
+    if st.button("Add Hitter"):
+        if not hitter_name:
+            st.warning("Enter a hitter name.")
         else:
-            st.warning("Enter hitter name first.")
+            ensure_player(hitter_name, team=None, bats=hitter_bats)
+            st.session_state["lineup"].append({"Name": hitter_name, "Team": None, "Bats": hitter_bats, "Order": int(hitter_slot)})
+            st.session_state["lineup"] = sorted(st.session_state["lineup"], key=lambda x: x["Order"])
+            st.success(f"Added hitter {hitter_name}")
+            st.rerun()
 
-    # show lineup table with ability to remove or edit
     if st.session_state["lineup"]:
-        st.markdown("**Current lineup:**")
-        for i, hitter in enumerate(st.session_state["lineup"]):
-            cols = st.columns([4,2,1,1])
-            cols[0].write(f"{hitter['Order']}. {hitter['Name']} ({hitter['Bats']})")
-            if cols[3].button(f"Remove-{i}"):
-                st.session_state["lineup"].pop(i)
-                st.experimental_rerun()
+        st.write("Current lineup:")
+        for idx, p in enumerate(st.session_state["lineup"], start=1):
+            cols = st.columns([6,1,1])
+            cols[0].write(f"{p['Order']}. {p['Name']} ({p['Bats']})")
+            if cols[2].button(f"Remove Hitter {idx}"):
+                st.session_state["lineup"].pop(idx-1)
+                st.success("Removed.")
+                st.rerun()
 
-    # Pitcher setup
     st.markdown("---")
-    st.markdown("**Pitchers (add starters/relievers here)**")
-    pcol1, pcol2 = st.columns([3,1])
-    with pcol1:
-        new_pitcher_name = st.text_input("New Pitcher Name", key="new_pitcher_name")
-    with pcol2:
-        new_pitcher_throws = st.selectbox("Throws", ["Right", "Left"], key="new_pitcher_throws")
-    add_pitcher_btn = st.button("Add Pitcher")
-    if add_pitcher_btn:
-        if new_pitcher_name:
-            pid = ensure_player(new_pitcher_name, team=None, throws=new_pitcher_throws)
-            st.session_state["pitchers"].append({"Name": new_pitcher_name, "Throws": new_pitcher_throws})
-            st.success(f"Added pitcher {new_pitcher_name}.")
+    st.markdown("### Pitchers (add starters/relievers here)")
+    pc1, pc2 = st.columns([4,1])
+    with pc1:
+        new_pname = st.text_input("Pitcher Name", key="new_pname")
+    with pc2:
+        new_throws = st.selectbox("Throws", ["Right", "Left"], key="new_throws")
+    if st.button("Add Pitcher"):
+        if not new_pname:
+            st.warning("Enter pitcher name.")
         else:
-            st.warning("Enter pitcher name first.")
+            ensure_player(new_pname, team=None, throws=new_throws)
+            st.session_state["pitchers"].append({"Name": new_pname, "Throws": new_throws, "Team": None})
+            st.success(f"Added pitcher {new_pname}")
+            st.rerun()
 
-# ---------- 2) AtBat selection / Add Batter ----------
+# -----------------------
+# 2 — AtBat selection
+# -----------------------
 st.header("2 — AtBat Selection")
-colA, colB = st.columns([2,1])
-with colA:
-    # Populate batter dropdown from lineup
+col1, col2 = st.columns([2,1])
+with col1:
     lineup_names = [p["Name"] for p in st.session_state["lineup"]]
-    atbat_choice = st.selectbox("Select Batter (or choose Add Batter)", ["-- Select Batter --", "-- Add Batter --"] + lineup_names)
-    # If Add Batter chosen, show add batter form (place in lineup)
-    if atbat_choice == "-- Add Batter --":
-        st.subheader("Add Batter (to lineup & create AtBat)")
-        add_name = st.text_input("Batter Name (new)")
-        add_bats = st.selectbox("Bats", ["Right", "Left", "Switch"], key="addbats")
-        add_pos = st.number_input("Lineup Position", min_value=1, max_value=99, value=len(st.session_state["lineup"])+1)
-        add_team_choice = st.selectbox("Batter Team", ["Home", "Away", "Unknown"])
-        if st.button("Add Batter & Start AtBat"):
-            # add player and lineup
-            pid = ensure_player(add_name, team=None, bats=add_bats)
-            st.session_state["lineup"].append({"Name": add_name, "Team": None, "Bats": add_bats, "Order": int(add_pos)})
-            st.session_state["lineup"] = sorted(st.session_state["lineup"], key=lambda x: x["Order"])
-            # create AtBat immediately: need pitcher selected (choose current pitcher)
-            st.success("Batter added. Now select pitcher below to start at-bat.")
-            st.experimental_rerun()
-    elif atbat_choice not in ["-- Select Batter --", "-- Add Batter --"]:
-        selected_batter_name = atbat_choice
-        st.write(f"Selected batter: {selected_batter_name}")
-        # when selecting a batter, create AtBat when coach picks pitcher or clicks "Start AtBat"
-with colB:
-    # Pitcher selection - show known pitchers
-    pitcher_names = [p["Name"] for p in st.session_state["pitchers"]]
-    pitcher_select = st.selectbox("Select Pitcher (or Add Pitcher)", ["-- Select Pitcher --", "-- Add Pitcher --"] + pitcher_names)
-    if pitcher_select == "-- Add Pitcher --":
-        new_p_name = st.text_input("Pitcher Name (new)", key="newpitchname")
-        new_p_throws = st.selectbox("Throws", ["Right", "Left"], key="newpitchthrows")
-        if st.button("Add Pitcher & Use"):
-            pid = ensure_player(new_p_name, team=None, throws=new_p_throws)
-            st.session_state["pitchers"].append({"Name": new_p_name, "Throws": new_p_throws})
-            st.experimental_rerun()
-    elif pitcher_select not in ["-- Select Pitcher --", "-- Add Pitcher --"]:
-        selected_pitcher_name = pitcher_select
-        st.write(f"Selected pitcher: {selected_pitcher_name}")
+    batter_choice = st.selectbox("Select Batter (or Add Batter)", ["-- Select Batter --", "-- Add Batter --"] + lineup_names, key="batter_choice")
+    if batter_choice == "-- Add Batter --":
+        nb_name = st.text_input("New Batter Name", key="nb_name")
+        nb_bats = st.selectbox("Bats", ["Right", "Left", "Switch"], key="nb_bats")
+        nb_order = st.number_input("Lineup Position", min_value=1, max_value=99, value=len(st.session_state["lineup"])+1, key="nb_order")
+        if st.button("Add Batter to Lineup"):
+            if not nb_name:
+                st.warning("Enter name.")
+            else:
+                ensure_player(nb_name, team=None, bats=nb_bats)
+                st.session_state["lineup"].append({"Name": nb_name, "Team": None, "Bats": nb_bats, "Order": int(nb_order)})
+                st.session_state["lineup"] = sorted(st.session_state["lineup"], key=lambda x: x["Order"])
+                st.success("Added batter.")
+                st.rerun()
+    elif batter_choice not in ["-- Select Batter --", "-- Add Batter --"]:
+        st.write(f"Selected batter: **{batter_choice}**")
 
-# Start AtBat button (creates AtBat record with selected batter and pitcher)
-if (atbat_choice not in ["-- Select Batter --", "-- Add Batter --"]) and (pitcher_select not in ["-- Select Pitcher --", "-- Add Pitcher --"]):
-    # fetch ids
-    batter_pid = ensure_player(atbat_choice)
-    pitcher_pid = ensure_player(pitcher_select)
-    inning_val = st.number_input("Inning", min_value=1, step=1, value=1)
-    if st.button("Start AtBat (create AtBat)"):
-        # create AtBat with inferred batter order = lineup position
-        order = next((p["Order"] for p in st.session_state["lineup"] if p["Name"] == atbat_choice), None)
-        atbat_id = create_atbat(game_id, batter_pid, pitcher_pid, inning=inning_val)
+with col2:
+    pitcher_names = [p["Name"] for p in st.session_state["pitchers"]]
+    pitcher_choice = st.selectbox("Select Pitcher (or Add Pitcher)", ["-- Select Pitcher --", "-- Add Pitcher --"] + pitcher_names, key="pitcher_choice")
+    if pitcher_choice == "-- Add Pitcher --":
+        ap_name = st.text_input("New Pitcher Name", key="ap_name")
+        ap_throws = st.selectbox("Throws", ["Right", "Left"], key="ap_throws")
+        if st.button("Add Pitcher & Use"):
+            if not ap_name:
+                st.warning("Enter name.")
+            else:
+                ensure_player(ap_name, team=None, throws=ap_throws)
+                st.session_state["pitchers"].append({"Name": ap_name, "Throws": ap_throws, "Team": None})
+                st.success("Added pitcher.")
+                st.rerun()
+    elif pitcher_choice not in ["-- Select Pitcher --", "-- Add Pitcher --"]:
+        st.write(f"Selected pitcher: **{pitcher_choice}**")
+
+# Start AtBat button: only enabled when batter & pitcher picked (or batter added & pitcher picked)
+if (batter_choice not in ["-- Select Batter --", "-- Add Batter --"]) and (pitcher_choice not in ["-- Select Pitcher --", "-- Add Pitcher --"]):
+    inning_val = st.number_input("Inning", min_value=1, value=1, key="inning_val")
+    if st.button("Start AtBat"):
+        batter_pid = ensure_player(batter_choice)
+        pitcher_pid = ensure_player(pitcher_choice)
+        order = next((p["Order"] for p in st.session_state["lineup"] if p["Name"] == batter_choice), None)
+        atbat_id = create_atbat(st.session_state["selected_game_id"], batter_pid, pitcher_pid, inning=inning_val, order=order)
         if atbat_id:
             st.session_state["current_atbat_id"] = atbat_id
             st.session_state["balls"] = 0
             st.session_state["strikes"] = 0
             st.session_state["pitch_history"] = []
             st.session_state["last_pitch_summary"] = None
-            st.success(f"AtBat {atbat_id} started for {atbat_choice}.")
-            st.experimental_rerun()
+            st.session_state["last_saved_pitch_id"] = None
+            st.success(f"AtBat {atbat_id} started.")
+            st.rerun()
 
-# ---------- 3) Pitch Entry ----------
-st.header("3 — Pitch Entry (real-time)")
+# -----------------------
+# 3 — Pitch Entry
+# -----------------------
+st.header("3 — Pitch Entry (Realtime)")
 
-if st.session_state.get("current_atbat_id"):
+if not st.session_state.get("current_atbat_id"):
+    st.info("Start an AtBat to enter pitches.")
+else:
     atbat_id = st.session_state["current_atbat_id"]
-
-    # load atbat info for display
-    ab_row = supabase.table("AtBats").select("*").eq("AtBatID", atbat_id).execute().data[0]
-    pitcher_id = ab_row["PitcherID"]
-    batter_id = ab_row["BatterID"]
+    # load atbat to get batter/pitcher
+    atbat_row = supabase.table("AtBats").select("*").eq("AtBatID", atbat_id).execute().data[0]
+    batter_id = atbat_row["BatterID"]
+    pitcher_id = atbat_row["PitcherID"]
     batter_info = supabase.table("Players").select("Name,Bats").eq("PlayerID", batter_id).execute().data[0]
     pitcher_info = supabase.table("Players").select("Name,Throws").eq("PlayerID", pitcher_id).execute().data[0]
 
-    st.markdown(f"**AtBat {atbat_id} — Batter:** {batter_info['Name']} ({batter_info.get('Bats')})  — **Pitcher:** {pitcher_info['Name']} ({pitcher_info.get('Throws')})")
-
-    # show last pitch summary and Undo button
+    st.markdown(f"**AtBat {atbat_id}** — Batter: **{batter_info['Name']}** ({batter_info.get('Bats')}) — Pitcher: **{pitcher_info['Name']}** ({pitcher_info.get('Throws')})")
+    # last-pitch summary + undo
     if st.session_state["last_pitch_summary"]:
         st.info("Last pitch: " + st.session_state["last_pitch_summary"])
         if st.button("Undo Last Pitch"):
             if st.session_state["pitch_history"]:
-                last_id = st.session_state["pitch_history"].pop()
+                last_pid = st.session_state["pitch_history"].pop()
                 try:
-                    delete_pitch(last_id)
-                    # recompute balls/strikes from DB for this atbat
-                    remaining = supabase.table("Pitches").select("Balls,Strikes").eq("AtBatID", atbat_id).execute().data or []
-                    if remaining:
-                        st.session_state["balls"] = remaining[-1].get("Balls", 0)
-                        st.session_state["strikes"] = remaining[-1].get("Strikes", 0)
+                    delete_last_pitch(last_pid)
+                    # recompute count from DB
+                    pitches = supabase.table("Pitches").select("Balls,Strikes").eq("AtBatID", atbat_id).execute().data or []
+                    if pitches:
+                        st.session_state["balls"] = pitches[-1].get("Balls", 0)
+                        st.session_state["strikes"] = pitches[-1].get("Strikes", 0)
                     else:
                         st.session_state["balls"] = 0
                         st.session_state["strikes"] = 0
-                    st.success("Last pitch undone.")
                     st.session_state["last_pitch_summary"] = None
-                    st.experimental_rerun()
+                    st.success("Last pitch undone.")
+                    st.rerun()
                 except Exception as e:
-                    st.error("Failed to undo: " + str(e))
+                    st.error("Undo failed: " + str(e))
             else:
                 st.warning("No pitch to undo.")
 
-    # determine next pitch numbers
-    pno, poab = next_pitch_numbers(pitcher_id, atbat_id)
+    # next pitch numbers
+    pno, poab = next_pitch_numbers_for(pitcher_id, atbat_id)
     st.write(f"Next Pitch No: **{pno}** — Pitch of AB: **{poab}**")
-    st.write(f"Count: {st.session_state['balls']}-{st.session_state['strikes']}")
+    st.write(f"Count: **{st.session_state['balls']}-{st.session_state['strikes']}**")
 
-    # pitch inputs (quick buttons + optional details)
-    st.markdown("**Quick pitch result buttons** (these will auto-update balls/strikes):")
-    col1, col2, col3 = st.columns(3)
-    with col1:
+    st.markdown("**Quick buttons (fast in-game input)**")
+    c1, c2, c3 = st.columns(3)
+    # quick Ball
+    with c1:
         if st.button("Ball Called"):
-            # increment balls
             st.session_state["balls"] = min(4, st.session_state["balls"] + 1)
             pitch_called = "Ball Called"
-            pitch_type = st.selectbox("Pitch Type", ["Fastball", "Changeup", "Curveball", "Slider"], key="pt1")
-            velocity = st.number_input("Velocity (mph)", min_value=0.0, step=0.1, key="vel1")
-            # save pitch below using shared code (emulate Save Pitch)
-            wel_val = compute_wel(st.session_state["balls"], st.session_state["strikes"])
+            # For quick actions, use default pitch type/velocity placeholders — coach can use manual for details
             resp = supabase.table("Pitches").insert({
                 "AtBatID": atbat_id,
                 "PitchNo": pno,
                 "PitchOfAB": poab,
-                "PitchType": pitch_type,
-                "Velocity": velocity,
+                "PitchType": None,
+                "Velocity": None,
                 "Zone": None,
                 "PitchCalled": pitch_called,
-                "WEL": wel_val,
+                "WEL": compute_wel(st.session_state["balls"], st.session_state["strikes"]),
                 "Balls": st.session_state["balls"],
                 "Strikes": st.session_state["strikes"],
                 "TaggedHit": None,
@@ -320,25 +318,24 @@ if st.session_state.get("current_atbat_id"):
             if resp.data:
                 pid = resp.data[0]["PitchID"]
                 st.session_state["pitch_history"].append(pid)
-                st.session_state["last_pitch_summary"] = f"{pitch_type} {velocity} — {pitch_called}"
-                st.success("Pitch saved.")
-                st.experimental_rerun()
-    with col2:
+                st.session_state["last_saved_pitch_id"] = pid
+                st.session_state["last_pitch_summary"] = f"{pitch_called} ({st.session_state['balls']}-{st.session_state['strikes']})"
+                st.success("Pitch saved (Ball).")
+                st.rerun()
+    # quick Swing miss
+    with c2:
         if st.button("Strike Swing Miss"):
             st.session_state["strikes"] = min(3, st.session_state["strikes"] + 1)
             pitch_called = "Strike Swing Miss"
-            pitch_type = st.selectbox("Pitch Type (swing)", ["Fastball", "Changeup", "Curveball", "Slider"], key="pt2")
-            velocity = st.number_input("Velocity (mph)", min_value=0.0, step=0.1, key="vel2")
-            wel_val = compute_wel(st.session_state["balls"], st.session_state["strikes"])
             resp = supabase.table("Pitches").insert({
                 "AtBatID": atbat_id,
                 "PitchNo": pno,
                 "PitchOfAB": poab,
-                "PitchType": pitch_type,
-                "Velocity": velocity,
+                "PitchType": None,
+                "Velocity": None,
                 "Zone": None,
                 "PitchCalled": pitch_called,
-                "WEL": wel_val,
+                "WEL": compute_wel(st.session_state["balls"], st.session_state["strikes"]),
                 "Balls": st.session_state["balls"],
                 "Strikes": st.session_state["strikes"],
                 "TaggedHit": None,
@@ -350,27 +347,25 @@ if st.session_state.get("current_atbat_id"):
             if resp.data:
                 pid = resp.data[0]["PitchID"]
                 st.session_state["pitch_history"].append(pid)
-                st.session_state["last_pitch_summary"] = f"{pitch_type} {velocity} — {pitch_called}"
-                st.success("Pitch saved.")
-                st.experimental_rerun()
-    with col3:
+                st.session_state["last_saved_pitch_id"] = pid
+                st.session_state["last_pitch_summary"] = f"{pitch_called} ({st.session_state['balls']}-{st.session_state['strikes']})"
+                st.success("Pitch saved (Swing Miss).")
+                st.rerun()
+    # quick Foul
+    with c3:
         if st.button("Foul Ball"):
-            # foul counts as strike but not beyond 2
             if st.session_state["strikes"] < 2:
                 st.session_state["strikes"] += 1
             pitch_called = "Foul Ball"
-            pitch_type = st.selectbox("Pitch Type (foul)", ["Fastball", "Changeup", "Curveball", "Slider"], key="pt3")
-            velocity = st.number_input("Velocity (mph)", min_value=0.0, step=0.1, key="vel3")
-            wel_val = compute_wel(st.session_state["balls"], st.session_state["strikes"])
             resp = supabase.table("Pitches").insert({
                 "AtBatID": atbat_id,
                 "PitchNo": pno,
                 "PitchOfAB": poab,
-                "PitchType": pitch_type,
-                "Velocity": velocity,
+                "PitchType": None,
+                "Velocity": None,
                 "Zone": None,
                 "PitchCalled": pitch_called,
-                "WEL": wel_val,
+                "WEL": compute_wel(st.session_state["balls"], st.session_state["strikes"]),
                 "Balls": st.session_state["balls"],
                 "Strikes": st.session_state["strikes"],
                 "TaggedHit": None,
@@ -382,48 +377,43 @@ if st.session_state.get("current_atbat_id"):
             if resp.data:
                 pid = resp.data[0]["PitchID"]
                 st.session_state["pitch_history"].append(pid)
-                st.session_state["last_pitch_summary"] = f"{pitch_type} {velocity} — {pitch_called}"
-                st.success("Pitch saved.")
-                st.experimental_rerun()
+                st.session_state["last_saved_pitch_id"] = pid
+                st.session_state["last_pitch_summary"] = f"{pitch_called} ({st.session_state['balls']}-{st.session_state['strikes']})"
+                st.success("Pitch saved (Foul).")
+                st.rerun()
 
-    # manual-insert pitch UI for more detail (zone, etc.)
     st.markdown("---")
-    st.markdown("**Manual pitch entry (more detail)**")
+    st.markdown("**Manual pitch entry (detailed)**")
     with st.form("manual_pitch_form"):
-        pitch_type = st.selectbox("Pitch Type", ["Fastball", "Changeup", "Curveball", "Slider"], key="man_pt")
-        velocity = st.number_input("Velocity (mph)", min_value=0.0, step=0.1, key="man_vel")
-        zone = st.selectbox("Zone (1-14 or None)", ["None"] + [str(i) for i in range(1,15)], key="man_zone")
-        pitch_called = st.selectbox("Pitch Result", ["Ball Called", "Strike Called", "Strike Swing Miss", "Foul Ball", "In Play"], key="man_called")
-        tagged = st.selectbox("Tagged Hit", ["None", "Bunt", "Flyball", "Groundball", "Linedrive"], key="man_tag")
-        hit_dir = st.selectbox("Hit Direction", ["None", "3-4 Hole", "5-6 Hole", "Catcher", "Center Field",
-                                                "First Base", "Left Center", "Left Field", "Middle",
-                                                "Pitcher", "Right Center", "Right Field", "Second Base",
-                                                "Short Stop", "Third Base"], key="man_hitdir")
-        submitted = st.form_submit_button("Save Manual Pitch")
-
-    if submitted:
-        # update balls/strikes according to pitch_called
-        if pitch_called == "Ball Called":
+        m_ptype = st.selectbox("Pitch Type", ["Fastball","Changeup","Curveball","Slider"], key="m_ptype")
+        m_vel = st.number_input("Velocity (mph)", min_value=0.0, step=0.1, key="m_vel")
+        m_zone = st.selectbox("Zone (1-14 or None)", ["None"] + [str(i) for i in range(1,15)], key="m_zone")
+        m_called = st.selectbox("Pitch Called", ["Ball Called","Strike Called","Strike Swing Miss","Foul Ball","In Play"], key="m_called")
+        m_tagged = st.selectbox("Tagged Hit", ["None","Bunt","Flyball","Groundball","Linedrive"], key="m_tagged")
+        m_hitdir = st.selectbox("Hit Direction", ["None","3-4 Hole","5-6 Hole","Catcher","Center Field","First Base","Left Center","Left Field","Middle","Pitcher","Right Center","Right Field","Second Base","Short Stop","Third Base"], key="m_hitdir")
+        submit_pitch = st.form_submit_button("Save Manual Pitch")
+    if submit_pitch:
+        # update counts based on called
+        if m_called == "Ball Called":
             st.session_state["balls"] = min(4, st.session_state["balls"] + 1)
-        elif pitch_called in ["Strike Called", "Strike Swing Miss"]:
+        elif m_called in ["Strike Called","Strike Swing Miss"]:
             st.session_state["strikes"] = min(3, st.session_state["strikes"] + 1)
-        elif pitch_called == "Foul Ball":
+        elif m_called == "Foul Ball":
             if st.session_state["strikes"] < 2:
                 st.session_state["strikes"] += 1
-        # compute WEL and store
+        # compute wel
         wel_val = compute_wel(st.session_state["balls"], st.session_state["strikes"])
-        zone_val = None if zone == "None" else int(zone)
-        tagged_val = None if tagged == "None" else tagged
-        hitdir_val = None if hit_dir == "None" else hit_dir
-
+        zone_val = None if m_zone == "None" else int(m_zone)
+        tagged_val = None if m_tagged == "None" else m_tagged
+        hitdir_val = None if m_hitdir == "None" else m_hitdir
         resp = supabase.table("Pitches").insert({
             "AtBatID": atbat_id,
             "PitchNo": pno,
             "PitchOfAB": poab,
-            "PitchType": pitch_type,
-            "Velocity": velocity,
+            "PitchType": m_ptype,
+            "Velocity": m_vel,
             "Zone": zone_val,
-            "PitchCalled": pitch_called,
+            "PitchCalled": m_called,
             "WEL": wel_val,
             "Balls": st.session_state["balls"],
             "Strikes": st.session_state["strikes"],
@@ -436,47 +426,43 @@ if st.session_state.get("current_atbat_id"):
         if resp.data:
             pid = resp.data[0]["PitchID"]
             st.session_state["pitch_history"].append(pid)
-            st.session_state["last_pitch_summary"] = f"{pitch_type} {velocity} — {pitch_called} ({st.session_state['balls']}-{st.session_state['strikes']})"
-            st.success("Pitch saved (manual).")
-            st.experimental_rerun()
-else:
-    st.info("Start an AtBat (select batter + pitcher + Start AtBat) before entering pitches.")
+            st.session_state["last_saved_pitch_id"] = pid
+            st.session_state["last_pitch_summary"] = f"{m_ptype} {m_vel} — {m_called} ({st.session_state['balls']}-{st.session_state['strikes']})"
+            st.success("Manual pitch saved.")
+            st.rerun()
 
-# ---------- 4) Runner Events ----------
+# -----------------------
+# 4 — Runner Events
+# -----------------------
 st.header("4 — Runner Events")
-pitch_for_events = st.session_state.get("last_pitch_id", None) or (st.session_state.get("pitch_history")[-1] if st.session_state.get("pitch_history") else None)
-# prefer session last_pitch_id, otherwise last item of pitch_history
-current_pitch_id = st.session_state.get("last_pitch_id", None)
-if not current_pitch_id and st.session_state.get("pitch_history"):
-    current_pitch_id = st.session_state["pitch_history"][-1]
+# determine current pitch id (most recent)
+current_pitch_id = st.session_state.get("last_saved_pitch_id") or (st.session_state["pitch_history"][-1] if st.session_state["pitch_history"] else None)
 
-if current_pitch_id:
-    st.write(f"Logging runner events for Pitch ID: {current_pitch_id}")
-    # load players for dropdown
-    players = supabase.table("Players").select("PlayerID,Name").execute().data or []
-    player_options = {p["Name"]: p["PlayerID"] for p in players}
-    selected_runner = st.selectbox("Select Runner", ["-- Select Player --"] + list(player_options.keys()), key="runner_select")
-    start_base = st.selectbox("Start Base (1=1st,2=2nd,3=3rd,4=home)", [1,2,3,4], key="start_base")
-    end_base = st.selectbox("End Base (1=1st,2=2nd,3=3rd,4=home,0=None)", [1,2,3,4,0], key="end_base", format_func=lambda x: "None" if x==0 else str(x))
-    event_type = st.selectbox("Event Type", ["Stolen Base", "Caught Stealing", "Out on Play", "Pickoff", "Advanced on Hit", "Other"], key="evt")
-    out_recorded = st.selectbox("Out Recorded", ["No","Yes"], key="outrec")
-
+if not current_pitch_id:
+    st.info("Log a pitch first to attach runner events.")
+else:
+    st.write(f"Logging events for Pitch ID: {current_pitch_id}")
+    players_list = supabase.table("Players").select("PlayerID,Name").execute().data or []
+    player_map = {p["Name"]: p["PlayerID"] for p in players_list}
+    runner_select = st.selectbox("Select Runner", ["-- Select Player --"] + list(player_map.keys()), key="re_runner")
+    start_base = st.selectbox("Start Base (1=1st,2=2nd,3=3rd,4=home)", [1,2,3,4], key="re_start")
+    end_base = st.selectbox("End Base (1=1st,2=2nd,3=3rd,4=home,0=None)", [1,2,3,4,0], key="re_end", format_func=lambda x: "None" if x==0 else str(x))
+    re_event = st.selectbox("Event Type", ["Stolen Base","Caught Stealing","Out on Play","Pickoff","Advanced on Hit","Other"], key="re_evt")
+    re_out = st.selectbox("Out Recorded", ["No","Yes"], key="re_out")
     if st.button("Save Runner Event"):
-        if selected_runner == "-- Select Player --":
-            st.warning("Choose a runner first.")
+        if runner_select == "-- Select Player --":
+            st.warning("Choose runner.")
         else:
-            runner_id = player_options[selected_runner]
+            runner_id = player_map[runner_select]
             resp = supabase.table("RunnerEvents").insert({
                 "PitchID": current_pitch_id,
                 "RunnerID": runner_id,
                 "StartBase": start_base,
                 "EndBase": None if end_base == 0 else end_base,
-                "EventType": event_type,
-                "OutRecorded": True if out_recorded == "Yes" else False
+                "EventType": re_event,
+                "OutRecorded": True if re_out == "Yes" else False
             }).execute()
             if resp.data:
                 st.success("Runner event saved.")
             else:
                 st.error("Failed to save runner event.")
-else:
-    st.info("Log a pitch first to tie runner events to a pitch.")
