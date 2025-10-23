@@ -291,7 +291,7 @@ else:
     st.write(f"Next Pitch No: **{pno}** — Pitch of AB: **{poab}**")
     st.write(f"Count: **{st.session_state['balls']}-{st.session_state['strikes']}**")
 
-    st.markdown("**Quick buttons (fast in-game input)**")
+    st.markdown("**Quick buttons**")
     c1, c2, c3 = st.columns(3)
     # quick Ball
     with c1:
@@ -394,43 +394,58 @@ else:
         m_hitdir = st.selectbox("Hit Direction", ["None","3-4 Hole","5-6 Hole","Catcher","Center Field","First Base","Left Center","Left Field","Middle","Pitcher","Right Center","Right Field","Second Base","Short Stop","Third Base"], key="m_hitdir")
         submit_pitch = st.form_submit_button("Save Manual Pitch")
     if submit_pitch:
-        # update counts based on called
-        if m_called == "Ball Called":
-            st.session_state["balls"] = min(4, st.session_state["balls"] + 1)
-        elif m_called in ["Strike Called","Strike Swing Miss"]:
-            st.session_state["strikes"] = min(3, st.session_state["strikes"] + 1)
-        elif m_called == "Foul Ball":
-            if st.session_state["strikes"] < 2:
-                st.session_state["strikes"] += 1
-        # compute wel
-        wel_val = compute_wel(st.session_state["balls"], st.session_state["strikes"])
-        zone_val = None if m_zone == "None" else int(m_zone)
-        tagged_val = None if m_tagged == "None" else m_tagged
-        hitdir_val = None if m_hitdir == "None" else m_hitdir
-        resp = supabase.table("Pitches").insert({
-            "AtBatID": atbat_id,
-            "PitchNo": pno,
-            "PitchOfAB": poab,
-            "PitchType": m_ptype,
-            "Velocity": m_vel,
-            "Zone": zone_val,
-            "PitchCalled": m_called,
-            "WEL": wel_val,
-            "Balls": st.session_state["balls"],
-            "Strikes": st.session_state["strikes"],
-            "TaggedHit": tagged_val,
-            "HitDirection": hitdir_val,
-            "KPI": None,
-            "PitcherID": pitcher_id,
-            "BatterID": batter_id
-        }).execute()
+    # Update counts based on pitch result
+    if m_called == "Ball Called":
+        st.session_state["balls"] = min(4, st.session_state["balls"] + 1)
+    elif m_called in ["Strike Called", "Strike Swing Miss"]:
+        st.session_state["strikes"] = min(3, st.session_state["strikes"] + 1)
+    elif m_called == "Foul Ball" and st.session_state["strikes"] < 2:
+        st.session_state["strikes"] += 1
+
+    # Compute WEL
+    wel_val = compute_wel(st.session_state["balls"], st.session_state["strikes"])
+
+    # Handle "None" dropdowns
+    zone_val = None if m_zone == "None" else int(m_zone)
+    tagged_val = None if m_tagged == "None" else m_tagged
+    hitdir_val = None if m_hitdir == "None" else m_hitdir
+
+    # Prepare pitch data
+    pitch_data = {
+        "AtBatID": int(atbat_id),
+        "PitchNo": int(pno),
+        "PitchOfAB": int(poab),
+        "PitchType": m_ptype,
+        "Velocity": float(m_vel) if m_vel else None,
+        "Zone": zone_val,
+        "PitchCalled": m_called,
+        "WEL": wel_val,
+        "Balls": int(st.session_state["balls"]),
+        "Strikes": int(st.session_state["strikes"]),
+        "TaggedHit": tagged_val,
+        "HitDirection": hitdir_val,
+        "KPI": None
+    }
+
+    # Insert into Supabase
+    try:
+        resp = supabase.table("Pitches").insert(pitch_data).execute()
+
         if resp.data:
-            pid = resp.data[0]["PitchID"]
+            pid = resp.data[0].get("PitchID")
             st.session_state["pitch_history"].append(pid)
             st.session_state["last_saved_pitch_id"] = pid
-            st.session_state["last_pitch_summary"] = f"{m_ptype} {m_vel} — {m_called} ({st.session_state['balls']}-{st.session_state['strikes']})"
-            st.success("Manual pitch saved.")
+            st.session_state["last_pitch_summary"] = (
+                f"{m_ptype} {m_vel} — {m_called} "
+                f"({st.session_state['balls']}-{st.session_state['strikes']})"
+            )
+            st.success("Pitch saved successfully!")
             st.rerun()
+        else:
+            st.error("Pitch not saved — check Supabase schema or required fields.")
+    except Exception as e:
+        st.error(f"Error inserting pitch: {e}")
+
 
 # -----------------------
 # 4 — Runner Events
@@ -467,5 +482,6 @@ else:
                 st.success("Runner event saved.")
             else:
                 st.error("Failed to save runner event.")
+
 
 
