@@ -463,7 +463,7 @@ if not current_pid:
     st.info("Log at least one pitch to attach runner events.")
 else:
     st.write(f"Attaching runner events to PitchID: {current_pid}")
-    players = supabase.table("Players").select("PlayerID,Name").order("Name", asc=True).execute().data or []
+    players = supabase.table("Players").select("PlayerID, Name").order("Name", desc=False).execute().data or []
     names = [p["Name"] for p in players]
     sel_names = st.multiselect("Select one or more runners", ["-- none --"] + names, default=[])
     start_base = st.selectbox("Start base", [1,2,3,4], index=0)
@@ -505,4 +505,5 @@ else:
 # ---------------------------
 st.markdown("---")
 st.caption("Notes: Setup lineup and pitchers first. Use quick buttons for speed. Manual pitch for detail. Undo to correct mistakes.")
+
 
