@@ -16,7 +16,7 @@ except Exception:
     st.error("Supabase secrets missing. Add [supabase] url and key to Streamlit secrets.")
     st.stop()
 
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+supabase = create_client(url, key)
 
 # ---------------------------
 #  Utilities
@@ -505,3 +505,4 @@ else:
 # ---------------------------
 st.markdown("---")
 st.caption("Notes: Setup lineup and pitchers first. Use quick buttons for speed. Manual pitch for detail. Undo to correct mistakes.")
+
