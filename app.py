@@ -30,21 +30,31 @@ def create_game(home, away, gamedate):
     return resp.data[0]["GameID"] if resp.data else None
 
 def create_atbat(game_id, inning):
-    # Default placeholders for required columns
-    resp = supabase.table("AtBats").insert({
-        "GameID": game_id,
-        "BatterID": None,        # You can later update this when batter is known
-        "PitcherID": None,       # Same for pitcher
-        "Inning": inning,
-        "BatterOrder": None,     # Can be filled later if tracked
-        "LeadOff": False,
-        "LeadOffOn": False,
-        "PlayResult": None,
-        "RunsScored": 0,
-        "EarnedRuns": 0,
-        "KorBB": None
-    }).execute()
-    return resp.data[0]["AtBatID"] if resp.data else None
+    try:
+        # Ensure valid numeric types
+        game_id = int(game_id) if game_id else None
+        inning = int(inning) if inning else None
+
+        # Minimal required insert — add only what’s definitely safe
+        data = {
+            "GameID": game_id,
+            "Inning": inning,
+            "RunsScored": 0,
+            "EarnedRuns": 0
+        }
+
+        # Insert into Supabase
+        resp = supabase.table("AtBats").insert(data).execute()
+
+        if resp.data:
+            return resp.data[0]["AtBatID"]
+        else:
+            st.error("Insert returned no data.")
+            return None
+
+    except Exception as e:
+        st.error(f"Error creating at-bat: {str(e)}")
+        return None
 
 def delete_last_pitch(pitch_id):
     """Delete a pitch by ID."""
@@ -222,4 +232,5 @@ if st.session_state["last_pitch_summary"]:
                 st.error("Undo failed: " + str(e))
         else:
             st.warning("No pitch to undo.")
+
 
