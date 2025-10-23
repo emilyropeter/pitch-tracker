@@ -30,10 +30,19 @@ def create_game(home, away, gamedate):
     return resp.data[0]["GameID"] if resp.data else None
 
 def create_atbat(game_id, inning):
-    """Create a new AtBat row."""
+    # Default placeholders for required columns
     resp = supabase.table("AtBats").insert({
         "GameID": game_id,
-        "Inning": inning
+        "BatterID": None,        # You can later update this when batter is known
+        "PitcherID": None,       # Same for pitcher
+        "Inning": inning,
+        "BatterOrder": None,     # Can be filled later if tracked
+        "LeadOff": False,
+        "LeadOffOn": False,
+        "PlayResult": None,
+        "RunsScored": 0,
+        "EarnedRuns": 0,
+        "KorBB": None
     }).execute()
     return resp.data[0]["AtBatID"] if resp.data else None
 
@@ -213,3 +222,4 @@ if st.session_state["last_pitch_summary"]:
                 st.error("Undo failed: " + str(e))
         else:
             st.warning("No pitch to undo.")
+
