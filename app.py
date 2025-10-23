@@ -248,7 +248,7 @@ if (batter_choice not in ["-- Select Batter --", "-- Add Batter --"]) and (pitch
 # -----------------------
 # 3 — Pitch Entry
 # -----------------------
-st.header("3 — Pitch Entry (Realtime)")
+st.header("3 — Pitch Entry")
 
 if not st.session_state.get("current_atbat_id"):
     st.info("Start an AtBat to enter pitches.")
@@ -467,4 +467,5 @@ else:
                 st.success("Runner event saved.")
             else:
                 st.error("Failed to save runner event.")
+
 
