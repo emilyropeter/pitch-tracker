@@ -67,17 +67,18 @@ def create_atbat(game_id, batter_id, pitcher_id, inning, order=None, leadoff=Non
 def delete_last_pitch(pitch_id):
     supabase.table("Pitches").delete().eq("PitchID", pitch_id).execute()
 
-def next_pitch_numbers_for(pitcher_id, atbat_id):
-    # PitchNo: largest PitchNo for pitcher +1 (or 1)
-    res = supabase.table("Pitches").select("PitchNo").eq("PitcherID", pitcher_id).order("PitchNo", desc=True).limit(1).execute()
-    if res.data:
-        pitch_no = (res.data[0].get("PitchNo") or 0) + 1
-    else:
-        pitch_no = 1
-    # PitchOfAB: count existing pitches in this atbat +1
-    res2 = supabase.table("Pitches").select("PitchOfAB").eq("AtBatID", atbat_id).execute()
-    pitch_of_ab = len(res2.data or []) + 1
-    return pitch_no, pitch_of_ab
+def next_pitch_numbers_for(atbat_id):
+    """Get the next global PitchNo and PitchOfAB safely."""
+    # Get next global PitchNo
+    res_global = supabase.table("Pitches").select("PitchNo").order("PitchNo", desc=True).limit(1).execute()
+    next_pitch_no = res_global.data[0]["PitchNo"] + 1 if res_global.data else 1
+
+    # Get next PitchOfAB for this specific at-bat
+    res_ab = supabase.table("Pitches").select("PitchOfAB").eq("AtBatID", atbat_id).order("PitchOfAB", desc=True).limit(1).execute()
+    next_pitch_of_ab = res_ab.data[0]["PitchOfAB"] + 1 if res_ab.data else 1
+
+    return next_pitch_no, next_pitch_of_ab
+
 
 def compute_wel(balls, strikes):
     # Early if 0-0,0-1,1-0,1-1 ; Win if 0-2 or 1-2 ; Lose if 2-0 or 2-1
@@ -286,7 +287,7 @@ else:
                 st.warning("No pitch to undo.")
 
     # next pitch numbers
-    pno, poab = next_pitch_numbers_for(pitcher_id, atbat_id)
+    pno, poab = next_pitch_numbers_for(atbat_id)
     st.write(f"Next Pitch No: **{pno}** — Pitch of AB: **{poab}**")
     st.write(f"Count: **{st.session_state['balls']}-{st.session_state['strikes']}**")
 
@@ -466,3 +467,4 @@ else:
                 st.success("Runner event saved.")
             else:
                 st.error("Failed to save runner event.")
+
