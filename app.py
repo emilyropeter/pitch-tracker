@@ -395,12 +395,12 @@ else:
         submit_pitch = st.form_submit_button("Save Manual Pitch")
     if submit_pitch:
     # Update counts based on pitch result
-    if m_called == "Ball Called":
-        st.session_state["balls"] = min(4, st.session_state["balls"] + 1)
-    elif m_called in ["Strike Called", "Strike Swing Miss"]:
-        st.session_state["strikes"] = min(3, st.session_state["strikes"] + 1)
-    elif m_called == "Foul Ball" and st.session_state["strikes"] < 2:
-        st.session_state["strikes"] += 1
+        if m_called == "Ball Called":
+            st.session_state["balls"] = min(4, st.session_state["balls"] + 1)
+        elif m_called in ["Strike Called", "Strike Swing Miss"]:
+            st.session_state["strikes"] = min(3, st.session_state["strikes"] + 1)
+        elif m_called == "Foul Ball" and st.session_state["strikes"] < 2:
+            st.session_state["strikes"] += 1
 
     # Compute WEL
     wel_val = compute_wel(st.session_state["balls"], st.session_state["strikes"])
@@ -482,6 +482,7 @@ else:
                 st.success("Runner event saved.")
             else:
                 st.error("Failed to save runner event.")
+
 
 
 
