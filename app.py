@@ -3,7 +3,7 @@ from supabase import create_client
 from datetime import date
 import math
 
-st.set_page_config(page_title="Baseball Game Tracker", layout="wide")
+st.set_page_config(page_title="Pitch Tracker", layout="wide")
 
 # ------------------------
 # Supabase connection
@@ -130,8 +130,7 @@ for k, v in defaults.items():
 # ------------------------
 # UI - Header
 # ------------------------
-st.title("⚾ Baseball Game Tracker")
-st.caption("Set lineup & pitchers in Setup. Start an at-bat, enter pitches quickly, undo last pitch, and finish at-bats.")
+st.title("Pitch Tracker")
 
 # ------------------------
 # 1) Setup: Games / Lineup / Pitchers
@@ -212,7 +211,7 @@ with st.expander("1 — Game Setup & Lineup", expanded=True):
 # ------------------------
 # 2) Select AtBat: batter & pitcher
 # ------------------------
-st.header("2 — Select AtBat (choose batter and pitcher)")
+st.header("2 — Select AtBat")
 
 colB1, colB2, colB3 = st.columns([3,3,2])
 
@@ -296,7 +295,7 @@ with colB3:
 # ------------------------
 # 3) Pitch Entry
 # ------------------------
-st.header("3 — Pitch Entry (realtime)")
+st.header("3 — Pitch Entry")
 
 if not st.session_state["current_atbat_id"]:
     st.info("Start an AtBat (choose batter & pitcher then Start AtBat).")
@@ -422,7 +421,7 @@ else:
 # ------------------------
 # 4) Finish AtBat
 # ------------------------
-st.header("4 — Finish AtBat (record result, clear at-bat)")
+st.header("4 — Finish AtBat")
 
 if st.session_state["current_atbat_id"]:
     finish_play = st.selectbox("Play Result to record", [
@@ -466,7 +465,7 @@ else:
 # ------------------------
 # 5) Runner Events
 # ------------------------
-st.header("5 — Runner Events (attach to last pitch)")
+st.header("5 — Runner Events)")
 
 current_pid = st.session_state.get("last_saved_pitch_id") or (st.session_state["pitch_history"][-1] if st.session_state["pitch_history"] else None)
 if not current_pid:
@@ -515,3 +514,4 @@ st.markdown("---")
 st.write(f"Game ID: {st.session_state.get('selected_game_id')}, AtBat ID: {st.session_state.get('current_atbat_id')}")
 st.write(f"Count: {st.session_state['balls']}-{st.session_state['strikes']}")
 st.write("Last pitch summary:", st.session_state.get("last_pitch_summary"))
+
