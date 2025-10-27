@@ -2,7 +2,7 @@ import streamlit as st
 from supabase import create_client
 from datetime import date
 
-st.set_page_config(page_title="Tracker", page_icon="📊")
+st.set_page_config(page_title="Tracker")
 
 # ---------------------------------------------------------
 # Supabase connection
@@ -116,7 +116,7 @@ if not st.session_state.get("selected_game_id"):
     st.warning("Please go to the Game Setup page first to create and start a game.")
     st.stop()
 
-st.title("📊 Tracker — Live Game View")
+st.title("Pitch Tracker")
 
 # ---------------------------------------------------------
 # 1 — Select AtBat
@@ -167,9 +167,9 @@ with col3:
                 st.error("Failed to create AtBat.")
 
 # ---------------------------------------------------------
-# 3 — Pitch Entry (Quick + Manual)
+# 2 — Pitch Entry (Quick + Manual)
 # ---------------------------------------------------------
-st.header("3 — Pitch Entry")
+st.header("2 — Pitch Entry")
 if not st.session_state["current_atbat_id"]:
     st.info("Start an AtBat to enter pitches.")
 else:
@@ -315,34 +315,55 @@ else:
             st.error("Pitch not saved. Check DB schema.")
 
 # ---------------------------------------------------------
-# 3 — Finish AtBat
+# 3 — Finish AtBat (result + LeadOffOn here)
 # ---------------------------------------------------------
 st.header("3 — Finish AtBat")
-if not st.session_state.get("current_atbat_id"):
-    st.info("Start an AtBat before finishing one.")
-else:
-    play_result = st.selectbox("Play Result", [
-        "-- Select --", "Single", "Double", "Triple", "Home Run",
-        "Ground Out", "Fly Out", "Strikeout Looking", "Strikeout Swinging",
-        "Walk", "Intentional Walk", "Hit by Pitch", "Error", "Other"
-    ])
-    leadoff_on = st.selectbox("Leadoff On", ["Select", "Yes", "No"])
+if st.session_state["current_atbat_id"]:
+    play_result_options = [
+        "1B", "2B", "3B", "HR",
+        "Walk", "Intentional Walk",
+        "Strikeout Looking", "Strikeout Swinging",
+        "HitByPitch", "GroundOut", "FlyOut", "Error", "FC", "SAC", "SACFly"
+    ]
+    finish_play = st.selectbox("Play Result", ["-- Select --"] + play_result_options)
+    lead_off_on_sel = st.selectbox("LeadOff On", ["Select", "Yes", "No"])
+    finish_runs = st.number_input("Runs Scored", min_value=0, value=0)
+    finish_earned = st.number_input("Earned Runs", min_value=0, value=0)
 
     if st.button("Finish AtBat"):
-        if play_result == "-- Select --" or leadoff_on == "Select":
-            st.warning("Select both Play Result and Leadoff On.")
-        else:
-            st.success(f"AtBat finished: {play_result} | Leadoff On: {leadoff_on}")
-            add_to_summary(f"AtBat Result: {play_result} | Leadoff On: {leadoff_on}")
-            st.session_state["current_atbat_id"] = None
-            st.session_state["balls"] = 0
-            st.session_state["strikes"] = 0
-            st.session_state["pitch_history"] = []
+        updates = {
+            "RunsScored": int(finish_runs),
+            "EarnedRuns": int(finish_earned)
+        }
+        if finish_play != "-- Select --":
+            updates["PlayResult"] = finish_play
+        if lead_off_on_sel != "Select":
+            updates["LeadOffOn"] = (lead_off_on_sel == "Yes")
 
+        try:
+            upd = update_atbat(st.session_state["current_atbat_id"], updates)
+            if upd.data:
+                add_to_summary(f"AtBat finished: {updates.get('PlayResult','Result')} | Runs {updates['RunsScored']} ER {updates['EarnedRuns']}")
+                st.success("AtBat updated & closed.")
+                # clear at-bat state
+                st.session_state["current_atbat_id"] = None
+                st.session_state["balls"] = 0
+                st.session_state["strikes"] = 0
+                st.session_state["pitch_history"] = []
+                st.session_state["last_pitch_summary"] = None
+                st.session_state["last_saved_pitch_id"] = None
+                st.rerun()
+            else:
+                st.error("Failed to update AtBat.")
+        except Exception as e:
+            st.error(f"Error updating AtBat: {e}")
+else:
+    st.info("No active at-bat. Start one above in step 2.")
+    
 # ---------------------------------------------------------
-# 5 — Runner Events (attach to last pitch)
+# 4 — Runner Events (attach to last pitch)
 # ---------------------------------------------------------
-st.header("5 — Runner Events")
+st.header("4 — Runner Events")
 current_pid = st.session_state.get("last_saved_pitch_id") or (
     st.session_state["pitch_history"][-1] if st.session_state["pitch_history"] else None
 )
