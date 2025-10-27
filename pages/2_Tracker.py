@@ -73,6 +73,21 @@ def insert_pitch(atbat_id, pitch_no, pitch_of_ab, pitch_type, velocity, zone, pi
     }
     return supabase.table("Pitches").insert(payload).execute()
 
+def update_atbat(atbat_id, updates: dict):
+    """Update the AtBats table for the given AtBatID."""
+    try:
+        resp = (
+            supabase
+            .table("AtBats")
+            .update(updates)
+            .eq("AtBatID", atbat_id)
+            .execute()
+        )
+        return resp
+    except Exception as e:
+        st.error(f"Failed to update AtBat {atbat_id}: {e}")
+        return None
+
 def add_to_summary(line: str):
     st.session_state["event_log"].insert(0, line)
 
