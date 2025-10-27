@@ -42,7 +42,7 @@ colB1, colB2, colB3 = st.columns([3,3,2])
 
 # Batter select
 with colB1:
-    players = supabase.table("Players").select("PlayerID,Name").order("Name", asc=True).execute().data or []
+    players = supabase.table("Players").select("PlayerID,Name").order("Name", desc=False).execute().data or []
     batter_names = [p["Name"] for p in players]
     batter_choice = st.selectbox("Select Batter", ["-- Select --"] + batter_names)
     if batter_choice != "-- Select --":
