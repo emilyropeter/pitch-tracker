@@ -1,9 +1,8 @@
 import streamlit as st
 from supabase import create_client
 from datetime import date
-import math
 
-st.set_page_config(page_title="Pitch Tracker", layout="wide")
+st.set_page_config(page_title="Baseball Game Tracker", layout="wide")
 
 # ------------------------
 # Supabase connection
@@ -12,7 +11,7 @@ try:
     SUPABASE_URL = st.secrets["supabase"]["url"]
     SUPABASE_KEY = st.secrets["supabase"]["key"]
 except KeyError:
-    st.error("Supabase credentials missing. Add them to Streamlit secrets under [supabase].")
+    st.error("Supabase credentials missing. Add them to .streamlit/secrets.toml under [supabase].")
     st.stop()
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -39,13 +38,11 @@ def ensure_player(name, team=None, throws=None, bats=None):
 
 def create_game(home, away, gamedate):
     resp = supabase.table("Games").insert({
-        "HomeTeam": home,
-        "AwayTeam": away,
-        "GameDate": str(gamedate)
+        "HomeTeam": home, "AwayTeam": away, "GameDate": str(gamedate)
     }).execute()
     return resp.data[0]["GameID"] if resp.data else None
 
-def create_atbat(game_id, batter_id, pitcher_id, inning, batter_order=None, lead_off=None, lead_off_on=None):
+def create_atbat(game_id, batter_id, pitcher_id, inning, batter_order=None, lead_off=None):
     """Insert AtBat (BatterID/PitcherID are NOT NULL in your schema)."""
     payload = {
         "GameID": int(game_id),
@@ -59,8 +56,6 @@ def create_atbat(game_id, batter_id, pitcher_id, inning, batter_order=None, lead
         payload["BatterOrder"] = int(batter_order)
     if lead_off is not None:
         payload["LeadOff"] = bool(lead_off)
-    if lead_off_on is not None:
-        payload["LeadOffOn"] = bool(lead_off_on)
     resp = supabase.table("AtBats").insert(payload).execute()
     return resp.data[0]["AtBatID"] if resp.data else None
 
@@ -130,7 +125,8 @@ for k, v in defaults.items():
 # ------------------------
 # UI - Header
 # ------------------------
-st.title("Pitch Tracker")
+st.title("⚾ Baseball Game Tracker")
+st.caption("Set lineup & pitchers in Setup. Start an at-bat, enter pitches quickly, undo last pitch, and finish at-bats.")
 
 # ------------------------
 # 1) Setup: Games / Lineup / Pitchers
@@ -189,7 +185,7 @@ with st.expander("1 — Game Setup & Lineup", expanded=True):
     with col3:
         st.subheader("Pitchers")
         pname = st.text_input("Pitcher name", key="p_name")
-        p_throws = st.selectbox("Throws", ["Right", "Left"], key="p_throws")  # ✅ always defined
+        p_throws = st.selectbox("Throws", ["Right", "Left"], key="p_throws")  # always defined
         if st.button("Add Pitcher"):
             if not pname:
                 st.warning("Enter pitcher name.")
@@ -211,7 +207,7 @@ with st.expander("1 — Game Setup & Lineup", expanded=True):
 # ------------------------
 # 2) Select AtBat: batter & pitcher
 # ------------------------
-st.header("2 — Select AtBat")
+st.header("2 — Select AtBat (choose batter and pitcher)")
 
 colB1, colB2, colB3 = st.columns([3,3,2])
 
@@ -261,8 +257,8 @@ with colB2:
 
 with colB3:
     inning_val = st.number_input("Inning", min_value=1, value=1)
+    # LeadOff ONLY (LeadOffOn moved to Finish AtBat)
     lead_off_sel = st.selectbox("LeadOff", ["Select", "Yes", "No"], key="lead_off_sel")
-    lead_off_on_sel = st.selectbox("LeadOff On", ["Select", "Yes", "No"], key="lead_off_on_sel")
     if st.button("Start AtBat"):
         if not st.session_state["selected_game_id"]:
             st.error("Select a game in Setup first.")
@@ -270,15 +266,13 @@ with colB3:
             st.error("Select batter and pitcher (from setup or add them).")
         else:
             lo_val = None if lead_off_sel == "Select" else (lead_off_sel == "Yes")
-            lo_on_val = None if lead_off_on_sel == "Select" else (lead_off_on_sel == "Yes")
             atbat_id = create_atbat(
                 st.session_state["selected_game_id"],
                 st.session_state["current_batter_id"],
                 st.session_state["current_pitcher_id"],
                 inning_val,
                 batter_order=None,
-                lead_off=lo_val,
-                lead_off_on=lo_on_val
+                lead_off=lo_val
             )
             if atbat_id:
                 st.session_state["current_atbat_id"] = atbat_id
@@ -295,7 +289,7 @@ with colB3:
 # ------------------------
 # 3) Pitch Entry
 # ------------------------
-st.header("3 — Pitch Entry")
+st.header("3 — Pitch Entry (realtime)")
 
 if not st.session_state["current_atbat_id"]:
     st.info("Start an AtBat (choose batter & pitcher then Start AtBat).")
@@ -419,30 +413,55 @@ else:
             st.error("Pitch not saved. Check DB schema.")
 
 # ------------------------
-# 4) Finish AtBat
+# 4) Finish AtBat (LeadOffOn moved here; simplified PlayResult; specials -> KorBB)
 # ------------------------
-st.header("4 — Finish AtBat")
+st.header("4 — Finish AtBat (record result, clear at-bat)")
 
 if st.session_state["current_atbat_id"]:
-    finish_play = st.selectbox("Play Result to record", [
-        "-- Select --",
-        "1B","2B","3B","HR","Error","FC","FlyOut","GroundOut",
-        "SAC","SACFly","HitByPitch",
-        "Strikeout Swinging","Strikeout Looking",
-        "Walk","Intentional Walk","4 Pitch Walk","2 Strike Walk","2 Out Walk",
-        "CaughtStealing","PickOff","DoublePlay","DropThirdStrike","OutOnPlay","Other"
-    ])
+    # Simplified PlayResult list (no Pickoff/CaughtStealing/4PW/2SW here)
+    play_result_options = [
+        "1B", "2B", "3B", "HR",
+        "Walk", "Intentional Walk",
+        "Strikeout Looking", "Strikeout Swinging",
+        "HitByPitch", "GroundOut", "FlyOut", "Error", "FC", "SAC", "SACFly"
+    ]
+    finish_play = st.selectbox("Play Result", ["-- Select --"] + play_result_options)
+
+    # Special Walk Type (optional) -> store in KorBB for simplicity
+    special_walk = None
+    if finish_play in ["Walk", "Intentional Walk"]:
+        special_walk = st.selectbox(
+            "Special Walk Type (optional)",
+            ["None", "4 Pitch Walk", "2 Strike Walk", "2 Out Walk"],
+            key="special_walk"
+        )
+
+    # LeadOffOn now here
+    lead_off_on_sel = st.selectbox("LeadOff On", ["Select", "Yes", "No"], key="finish_lead_off_on")
+
     finish_runs = st.number_input("Runs Scored (if any)", min_value=0, value=0)
     finish_earned = st.number_input("Earned Runs", min_value=0, value=0)
-    korbb_choice = st.selectbox("KorBB (optional)", ["-- Select --","Strikeout Swinging","Strikeout Looking","Walk","Intentional Walk","None"])
+
+    # Optional KorBB (fallback) — you can keep 'None' if only using special walks for KorBB
+    korbb_choice = st.selectbox("KorBB (optional)", ["None", "Strikeout Looking", "Strikeout Swinging", "Walk", "Intentional Walk"])
+
     if st.button("Finish AtBat"):
         updates = {}
         if finish_play != "-- Select --":
             updates["PlayResult"] = finish_play
         updates["RunsScored"] = int(finish_runs)
         updates["EarnedRuns"] = int(finish_earned)
-        if korbb_choice not in ["-- Select --","None"]:
+
+        # LeadOffOn (only if selected)
+        if lead_off_on_sel != "Select":
+            updates["LeadOffOn"] = (lead_off_on_sel == "Yes")
+
+        # Store special walk label in KorBB (simple version you asked for)
+        if special_walk and special_walk != "None":
+            updates["KorBB"] = special_walk
+        elif korbb_choice != "None":
             updates["KorBB"] = korbb_choice
+
         try:
             upd = update_atbat(st.session_state["current_atbat_id"], updates)
             if upd.data:
@@ -463,9 +482,9 @@ else:
     st.info("No active at-bat. Start one in step 2.")
 
 # ------------------------
-# 5) Runner Events
+# 5) Runner Events (attach to last pitch)
 # ------------------------
-st.header("5 — Runner Events)")
+st.header("5 — Runner Events (attach to last pitch)")
 
 current_pid = st.session_state.get("last_saved_pitch_id") or (st.session_state["pitch_history"][-1] if st.session_state["pitch_history"] else None)
 if not current_pid:
@@ -514,4 +533,3 @@ st.markdown("---")
 st.write(f"Game ID: {st.session_state.get('selected_game_id')}, AtBat ID: {st.session_state.get('current_atbat_id')}")
 st.write(f"Count: {st.session_state['balls']}-{st.session_state['strikes']}")
 st.write("Last pitch summary:", st.session_state.get("last_pitch_summary"))
-
