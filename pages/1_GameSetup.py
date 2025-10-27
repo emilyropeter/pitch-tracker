@@ -2,7 +2,7 @@ import streamlit as st
 from supabase import create_client
 from datetime import date
 
-st.set_page_config(page_title="Game Setup", page_icon="⚾")
+st.set_page_config(page_title="Game Setup")
 
 # -----------------------------
 # Supabase connection
@@ -49,7 +49,7 @@ for key, default in {
 # -----------------------------
 # 1 — Game Setup & Lineup
 # -----------------------------
-st.title("⚾ Game Setup")
+st.title("Game Setup")
 st.caption("Create a new game, manage lineup, and add pitchers.")
 
 with st.expander("1 — Game Setup & Lineup", expanded=True):
