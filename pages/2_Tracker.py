@@ -388,7 +388,7 @@ if not current_pid:
 else:
     st.write(f"Attaching events to PitchID: {current_pid}")
     try:
-        players = supabase.table("Players").select("PlayerID, Name").order("Name", "asc").execute().data or []
+        players = supabase.table("Players").select("PlayerID, Name").order("Name", desc=False).execute().data or []
     except Exception as e:
         st.error(f"Could not load players: {e}")
         players = []
@@ -426,7 +426,7 @@ else:
                     st.error(f"Insert failed: {e}")
 
 # ---------------------------------------------------------
-# 6 — Running Summary
+# 5 — Running Summary
 # ---------------------------------------------------------
 st.markdown("---")
 st.subheader("Running Summary")
