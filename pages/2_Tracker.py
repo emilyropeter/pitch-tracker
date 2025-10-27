@@ -33,11 +33,20 @@ def create_atbat(game_id, batter_id, pitcher_id, inning):
     return resp.data[0]["AtBatID"] if resp.data else None
 
 def next_pitch_numbers_for(atbat_id):
-    r1 = supabase.table("Pitches").select("PitchNo").order("PitchNo", desc=True).limit(1).execute()
-    last_global = r1.data[0]["PitchNo"] if r1.data else 0
-    r2 = supabase.table("Pitches").select("PitchOfAB").eq("AtBatID", atbat_id).order("PitchOfAB", desc=True).limit(1).execute()
-    last_poab = r2.data[0]["PitchOfAB"] if r2.data else 0
-    return last_global + 1, last_poab + 1
+    """Return (next global PitchNo, next PitchOfAB) with safe defaults."""
+    try:
+        r1 = supabase.table("Pitches").select("PitchNo").order("PitchNo", desc=True).limit(1).execute()
+        last_global = r1.data[0]["PitchNo"] if r1.data and r1.data[0]["PitchNo"] is not None else 0
+    except Exception:
+        last_global = 0
+
+    try:
+        r2 = supabase.table("Pitches").select("PitchOfAB").eq("AtBatID", atbat_id).order("PitchOfAB", desc=True).limit(1).execute()
+        last_poab = r2.data[0]["PitchOfAB"] if r2.data and r2.data[0]["PitchOfAB"] is not None else 0
+    except Exception:
+        last_poab = 0
+
+    return (int(last_global) + 1, int(last_poab) + 1)
 
 def compute_wel(balls, strikes):
     t = (balls, strikes)
