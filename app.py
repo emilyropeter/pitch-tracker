@@ -1,3 +1,4 @@
+# app.py
 import streamlit as st
 from supabase import create_client
 from datetime import date
@@ -116,17 +117,26 @@ defaults = {
     "strikes": 0,
     "pitch_history": [],      # [PitchID, ...]
     "last_pitch_summary": None,
-    "last_saved_pitch_id": None
+    "last_saved_pitch_id": None,
+    # quick entry state + summary log
+    "quick_pitch_type": None,
+    "quick_pitch_called": None,
+    "quick_vel": 0.0,
+    "quick_zone": "None",
+    "event_log": []           # newest-first strings
 }
 for k, v in defaults.items():
     if k not in st.session_state:
         st.session_state[k] = v
 
+def add_to_summary(line: str):
+    st.session_state["event_log"].insert(0, line)  # newest first
+
 # ------------------------
 # UI - Header
 # ------------------------
 st.title("⚾ Baseball Game Tracker")
-st.caption("Set lineup & pitchers in Setup. Start an at-bat, enter pitches quickly, undo last pitch, and finish at-bats.")
+st.caption("Quick buttons for in-game use. Manual entry preserved. Undo last pitch. Runner events + running summary.")
 
 # ------------------------
 # 1) Setup: Games / Lineup / Pitchers
@@ -185,7 +195,7 @@ with st.expander("1 — Game Setup & Lineup", expanded=True):
     with col3:
         st.subheader("Pitchers")
         pname = st.text_input("Pitcher name", key="p_name")
-        p_throws = st.selectbox("Throws", ["Right", "Left"], key="p_throws")  # always defined
+        p_throws = st.selectbox("Throws", ["Right", "Left"], key="p_throws")
         if st.button("Add Pitcher"):
             if not pname:
                 st.warning("Enter pitcher name.")
@@ -287,9 +297,9 @@ with colB3:
                 st.error("Failed to create AtBat. Check DB constraints.")
 
 # ------------------------
-# 3) Pitch Entry
+# 3) Pitch Entry — QUICK BUTTONS (above manual)
 # ------------------------
-st.header("3 — Pitch Entry (realtime)")
+st.header("3 — Pitch Entry (Quick Buttons)")
 
 if not st.session_state["current_atbat_id"]:
     st.info("Start an AtBat (choose batter & pitcher then Start AtBat).")
@@ -299,7 +309,7 @@ else:
     st.write(f"Next PitchNo: **{pno}** — PitchOfAB: **{poab}**")
     st.write(f"Count: **{st.session_state['balls']}-{st.session_state['strikes']}**")
 
-    # last pitch + undo
+    # Last pitch + undo
     if st.session_state["last_pitch_summary"]:
         st.info("Last pitch: " + st.session_state["last_pitch_summary"])
         if st.button("Undo Last Pitch"):
@@ -322,62 +332,93 @@ else:
             else:
                 st.warning("No pitch to undo.")
 
-    st.markdown("**Quick Buttons**")
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        if st.button("Ball Called"):
-            st.session_state["balls"] = min(4, st.session_state["balls"] + 1)
-            pitch_called = "Ball Called"
-            wel = compute_wel(st.session_state["balls"], st.session_state["strikes"])
-            r = insert_pitch(atbat_id, pno, poab, None, None, None, pitch_called,
-                             st.session_state["balls"], st.session_state["strikes"], wel,
-                             None, None, None)
-            if r.data:
-                pid = r.data[0]["PitchID"]
-                st.session_state["pitch_history"].append(pid)
-                st.session_state["last_saved_pitch_id"] = pid
-                st.session_state["last_pitch_summary"] = f"{pitch_called} ({st.session_state['balls']}-{st.session_state['strikes']})"
-                st.success("Saved (Ball).")
-                st.rerun()
-    with c2:
-        if st.button("Strike Swing Miss"):
-            st.session_state["strikes"] = min(3, st.session_state["strikes"] + 1)
-            pitch_called = "Strike Swing Miss"
-            wel = compute_wel(st.session_state["balls"], st.session_state["strikes"])
-            r = insert_pitch(atbat_id, pno, poab, None, None, None, pitch_called,
-                             st.session_state["balls"], st.session_state["strikes"], wel,
-                             None, None, None)
-            if r.data:
-                pid = r.data[0]["PitchID"]
-                st.session_state["pitch_history"].append(pid)
-                st.session_state["last_saved_pitch_id"] = pid
-                st.session_state["last_pitch_summary"] = f"{pitch_called} ({st.session_state['balls']}-{st.session_state['strikes']})"
-                st.success("Saved (Swing Miss).")
-                st.rerun()
-    with c3:
-        if st.button("Foul Ball"):
-            if st.session_state["strikes"] < 2:
-                st.session_state["strikes"] += 1
-            pitch_called = "Foul Ball"
-            wel = compute_wel(st.session_state["balls"], st.session_state["strikes"])
-            r = insert_pitch(atbat_id, pno, poab, None, None, None, pitch_called,
-                             st.session_state["balls"], st.session_state["strikes"], wel,
-                             None, None, None)
-            if r.data:
-                pid = r.data[0]["PitchID"]
-                st.session_state["pitch_history"].append(pid)
-                st.session_state["last_saved_pitch_id"] = pid
-                st.session_state["last_pitch_summary"] = f"{pitch_called} ({st.session_state['balls']}-{st.session_state['strikes']})"
-                st.success("Saved (Foul).")
-                st.rerun()
+    # --- Quick Pitch Type buttons (horizontal)
+    st.markdown("**Pitch Type**")
+    pt_cols = st.columns(5)
+    types = ["Fastball", "Slider", "Curveball", "Changeup", "Cutter"]
+    for i, t in enumerate(types):
+        if pt_cols[i].button(t, key=f"pt_{t}"):
+            st.session_state["quick_pitch_type"] = t
 
+    st.caption(f"Selected type: {st.session_state['quick_pitch_type'] or '—'}")
+
+    # --- Quick Pitch Called buttons (horizontal)
+    st.markdown("**Pitch Called**")
+    pc_cols = st.columns(5)
+    calleds = ["Strike Called", "Strike Swing Miss", "Ball Called", "Foul Ball", "In Play"]
+    for i, c in enumerate(calleds):
+        if pc_cols[i].button(c, key=f"pc_{c}"):
+            st.session_state["quick_pitch_called"] = c
+
+    st.caption(f"Selected called: {st.session_state['quick_pitch_called'] or '—'}")
+
+    # Optional quick velocity + zone
+    qc1, qc2 = st.columns(2)
+    with qc1:
+        st.session_state["quick_vel"] = st.number_input("Velocity (mph, optional)", min_value=0.0, step=0.1, value=float(st.session_state["quick_vel"]), key="quick_vel_inp")
+    with qc2:
+        st.session_state["quick_zone"] = st.selectbox("Zone (optional)", ["None"] + [str(i) for i in range(1,15)], index=(0 if st.session_state["quick_zone"]=="None" else int(st.session_state["quick_zone"])), key="quick_zone_sel")
+
+    # Submit quick pitch
+    if st.button("Submit Pitch"):
+        if not st.session_state["quick_pitch_type"] or not st.session_state["quick_pitch_called"]:
+            st.warning("Pick a Pitch Type and a Pitch Called first.")
+        else:
+            # Update counts from result
+            called = st.session_state["quick_pitch_called"]
+            if called == "Ball Called":
+                st.session_state["balls"] = min(4, st.session_state["balls"] + 1)
+            elif called in ["Strike Called", "Strike Swing Miss"]:
+                st.session_state["strikes"] = min(3, st.session_state["strikes"] + 1)
+            elif called == "Foul Ball" and st.session_state["strikes"] < 2:
+                st.session_state["strikes"] += 1
+            elif called == "In Play" and st.session_state["strikes"] < 3:
+                st.session_state["strikes"] += 1
+
+            wel = compute_wel(st.session_state["balls"], st.session_state["strikes"])
+            zone_val = None if st.session_state["quick_zone"] == "None" else int(st.session_state["quick_zone"])
+
+            r = insert_pitch(
+                atbat_id=atbat_id,
+                pitch_no=pno,
+                pitch_of_ab=poab,
+                pitch_type=st.session_state["quick_pitch_type"],
+                velocity=st.session_state["quick_vel"],
+                zone=zone_val,
+                pitch_called=called,
+                balls=st.session_state["balls"],
+                strikes=st.session_state["strikes"],
+                wel=wel,
+                tagged=None,
+                hitdir=None,
+                kpi=None
+            )
+            if r.data:
+                pid = r.data[0]["PitchID"]
+                st.session_state["pitch_history"].append(pid)
+                st.session_state["last_saved_pitch_id"] = pid
+                st.session_state["last_pitch_summary"] = f"{st.session_state['quick_pitch_type']} {st.session_state['quick_vel']} — {called} ({st.session_state['balls']}-{st.session_state['strikes']})"
+                add_to_summary(f"Pitch {pno}: {st.session_state['quick_pitch_type']} — {called}  |  {st.session_state['balls']}-{st.session_state['strikes']}")
+                # reset quick selections/fields
+                st.session_state["quick_pitch_type"] = None
+                st.session_state["quick_pitch_called"] = None
+                st.session_state["quick_vel"] = 0.0
+                st.session_state["quick_zone"] = "None"
+                st.success("Pitch saved.")
+                st.rerun()
+            else:
+                st.error("Pitch not saved. Check DB schema.")
+
+    # ------------------------
+    # Manual Pitch Form (kept below)
+    # ------------------------
     st.markdown("---")
     st.markdown("**Manual pitch entry (detail)**")
     with st.form("manual_pitch_form"):
-        m_type = st.selectbox("Pitch Type", ["Fastball", "Changeup", "Curveball", "Slider"])
+        m_type = st.selectbox("Pitch Type", ["Fastball", "Changeup", "Curveball", "Slider", "Cutter"])
         m_vel = st.number_input("Velocity (mph)", min_value=0.0, step=0.1)
         m_zone = st.selectbox("Zone (1-14 or None)", ["None"] + [str(i) for i in range(1,15)])
-        m_called = st.selectbox("Pitch Called", ["Ball Called", "Strike Called", "Strike Swing Miss", "Foul Ball", "In Play"])
+        m_called = st.selectbox("Pitch Called", ["Strike Called", "Strike Swing Miss", "Ball Called", "Foul Ball", "In Play"])
         m_tagged = st.selectbox("Tagged Hit", ["None", "Bunt", "Flyball", "Groundball", "Linedrive"])
         m_hitdir = st.selectbox("Hit Direction", ["None","3-4 Hole","5-6 Hole","Catcher","Center Field","First Base","Left Center","Left Field","Middle","Pitcher","Right Center","Right Field","Second Base","Short Stop","Third Base"])
         m_kpi = st.text_input("KPI / Notes (optional)")
@@ -407,13 +448,14 @@ else:
             st.session_state["pitch_history"].append(pid)
             st.session_state["last_saved_pitch_id"] = pid
             st.session_state["last_pitch_summary"] = f"{m_type} {m_vel} — {m_called} ({st.session_state['balls']}-{st.session_state['strikes']})"
+            add_to_summary(f"Pitch {pno}: {m_type} — {m_called}  |  {st.session_state['balls']}-{st.session_state['strikes']}")
             st.success("Manual pitch saved.")
             st.rerun()
         else:
             st.error("Pitch not saved. Check DB schema.")
 
 # ------------------------
-# 4) Finish AtBat (LeadOffOn moved here; simplified PlayResult; specials -> KorBB)
+# 4) Finish AtBat (LeadOffOn here; simplified PlayResult; specials -> KorBB)
 # ------------------------
 st.header("4 — Finish AtBat (record result, clear at-bat)")
 
@@ -436,13 +478,13 @@ if st.session_state["current_atbat_id"]:
             key="special_walk"
         )
 
-    # LeadOffOn now here
+    # LeadOffOn here
     lead_off_on_sel = st.selectbox("LeadOff On", ["Select", "Yes", "No"], key="finish_lead_off_on")
 
     finish_runs = st.number_input("Runs Scored (if any)", min_value=0, value=0)
     finish_earned = st.number_input("Earned Runs", min_value=0, value=0)
 
-    # Optional KorBB (fallback) — you can keep 'None' if only using special walks for KorBB
+    # Optional KorBB fallback
     korbb_choice = st.selectbox("KorBB (optional)", ["None", "Strikeout Looking", "Strikeout Swinging", "Walk", "Intentional Walk"])
 
     if st.button("Finish AtBat"):
@@ -452,11 +494,10 @@ if st.session_state["current_atbat_id"]:
         updates["RunsScored"] = int(finish_runs)
         updates["EarnedRuns"] = int(finish_earned)
 
-        # LeadOffOn (only if selected)
         if lead_off_on_sel != "Select":
             updates["LeadOffOn"] = (lead_off_on_sel == "Yes")
 
-        # Store special walk label in KorBB (simple version you asked for)
+        # Store special walk label in KorBB (simple version)
         if special_walk and special_walk != "None":
             updates["KorBB"] = special_walk
         elif korbb_choice != "None":
@@ -466,6 +507,7 @@ if st.session_state["current_atbat_id"]:
             upd = update_atbat(st.session_state["current_atbat_id"], updates)
             if upd.data:
                 st.success("AtBat updated.")
+                add_to_summary(f"AtBat finished: {updates.get('PlayResult','Result')}  |  Runs {updates.get('RunsScored',0)}  ER {updates.get('EarnedRuns',0)}")
                 # Clear state for next AB
                 st.session_state["current_atbat_id"] = None
                 st.session_state["balls"] = 0
@@ -519,6 +561,8 @@ else:
                     r = supabase.table("RunnerEvents").insert(payload).execute()
                     if r.data:
                         created += 1
+                        arrow = f"{start_base}→{end_base if end_base!=0 else '-'}"
+                        add_to_summary(f"Runner {nm}: {event_type}  |  {arrow}  |  Out={payload['OutRecorded']}")
                 except Exception as e:
                     st.error(f"Failed for {nm}: {e}")
             if created:
@@ -527,9 +571,15 @@ else:
                 st.warning("No runner events saved.")
 
 # ------------------------
-# Footer
+# Running Summary (session-only, newest first)
 # ------------------------
 st.markdown("---")
-st.write(f"Game ID: {st.session_state.get('selected_game_id')}, AtBat ID: {st.session_state.get('current_atbat_id')}")
-st.write(f"Count: {st.session_state['balls']}-{st.session_state['strikes']}")
-st.write("Last pitch summary:", st.session_state.get("last_pitch_summary"))
+st.subheader("Running Summary (session)")
+if st.session_state["event_log"]:
+    for line in st.session_state["event_log"]:
+        st.write("• " + line)
+else:
+    st.caption("No events yet. Pitch or record a runner event to see entries here.")
+
+# Footer
+st.caption(f"Game ID: {st.session_state.get('selected_game_id')}  |  AtBat ID: {st.session_state.get('current_atbat_id')}  |  Count: {st.session_state['balls']}-{st.session_state['strikes']}")
