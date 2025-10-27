@@ -2,15 +2,14 @@ import streamlit as st
 from supabase import create_client
 from datetime import date
 
-st.set_page_config(page_title="Game Setup", page_icon="⚾")
-st.markdown("<h1 style='text-align:center;'>Game Setup</h1>", unsafe_allow_html=True)
+st.set_page_config(page_title="Game Setup")
 
 # Supabase connection
 SUPABASE_URL = st.secrets["supabase"]["url"]
 SUPABASE_KEY = st.secrets["supabase"]["key"]
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-st.title("⚾ Game Setup")
+st.title("Game Setup")
 st.caption("Create a game and set up your lineup before tracking pitches.")
 
 def create_game(home, away, gamedate):
