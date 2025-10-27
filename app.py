@@ -2,8 +2,9 @@
 import streamlit as st
 from supabase import create_client
 
-st.set_page_config(page_title="Game Setup", page_icon="⚾")
-st.markdown("<h1 style='text-align:center;'>Game Setup</h1>", unsafe_allow_html=True)
+st.set_page_config(page_title="Tracker", page_icon="📊")
+st.markdown("<h1 style='text-align:center;'>Pitch Tracker</h1>", unsafe_allow_html=True)
+
 
 
 # -----------------------------
@@ -199,4 +200,5 @@ if st.session_state.get("event_log"):
         st.write("• " + e)
 else:
     st.caption("No pitches or at-bats recorded yet.")
+
 
