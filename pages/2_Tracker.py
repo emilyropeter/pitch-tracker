@@ -98,6 +98,18 @@ for k, v in defaults.items():
         st.session_state[k] = v
 
 # ---------------------------------------------------------
+# Initialize pitch quick-entry defaults
+# ---------------------------------------------------------
+for key, default in {
+    "quick_pitch_type": None,
+    "quick_pitch_called": None,
+    "quick_vel": 0.0,
+    "quick_zone": "None"
+}.items():
+    if key not in st.session_state:
+        st.session_state[key] = default
+
+# ---------------------------------------------------------
 # Ensure a game is active
 # ---------------------------------------------------------
 if not st.session_state.get("selected_game_id"):
