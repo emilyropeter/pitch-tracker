@@ -348,7 +348,7 @@ else:
                 st.session_state["pitch_history"].append(pid)
                 st.session_state["last_saved_pitch_id"] = pid
                 batter_name = next((x["Name"] for x in st.session_state["lineup"]
-                                    if x["PlayerID"] == st.session_state["current_batter_id"]), "Unknown")
+                        if x["PlayerID"] == st.session_state["current_batter_id"]), "Unknown")
                 summary_line = f"{batter_name}: {st.session_state['quick_pitch_type']} {vel_val} — {called} ({st.session_state['balls']}-{st.session_state['strikes']})"
                 st.session_state["last_pitch_summary"] = summary_line
                 add_to_summary(f"Batter {batter_name} | Pitch {st.session_state['next_pitch_no']}: {st.session_state['quick_pitch_type']} — {called} | {st.session_state['balls']}-{st.session_state['strikes']}")
@@ -359,16 +359,16 @@ else:
                 st.session_state["quick_zone"] = "None"
                 st.session_state["quick_vel"] = 0.0
 
-                # Reset widget values safely (use local state updates)
+    # Reset widget values safely (use local state updates)
                 for key in ["quick_tagged_sel", "quick_hitdir_sel", "quick_kpi_inp"]:
                     if key in st.session_state:
                         del st.session_state[key]
 
                 refresh_pitch_numbers()
                 st.success("Pitch saved.")
+            else:
+                st.error("Pitch not saved. Check DB schema.")
 
-              else:
-                 st.error("Pitch not saved. Check DB schema.")
 
 
 # ---------------------------------------------------------
