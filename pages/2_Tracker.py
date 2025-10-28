@@ -159,6 +159,7 @@ with col2:
 
 with col3:
     inning_val = st.number_input("Inning", min_value=1, value=1)
+    leadoff_sel = st.selectbox("LeadOff", ["Select", "Yes", "No"])  # <-- added dropdown box
     if st.button("Start AtBat"):
         if not st.session_state["current_batter_id"] or not st.session_state["current_pitcher_id"]:
             st.error("Select batter and pitcher first.")
@@ -176,6 +177,15 @@ with col3:
                 st.session_state["pitch_history"] = []
                 st.session_state["last_pitch_summary"] = None
                 st.session_state["last_saved_pitch_id"] = None
+
+                if leadoff_sel != "Select":
+                    try:
+                        supabase.table("AtBats").update(
+                            {"LeadOff": (leadoff_sel == "Yes")}
+                        ).eq("AtBatID", atbat_id).execute()
+                    except Exception as e:
+                        st.warning(f"Could not update LeadOff value: {e}")
+
                 st.success(f"AtBat {atbat_id} created.")
                 st.rerun()
             else:
