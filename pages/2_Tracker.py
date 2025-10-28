@@ -240,41 +240,41 @@ else:
                 st.warning("No pitch to undo.")
 
     # --- Pitch Type Section ---
-st.subheader("Pitch Type")
+    st.subheader("Pitch Type")
 
 # 💅 Custom CSS to make buttons wider and prevent word wrapping
-st.markdown("""
-<style>
-div[data-testid="stHorizontalBlock"] div[data-testid="column"] button {
-    width: 100%;
-    white-space: nowrap !important;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    font-weight: 600;
-    border-radius: 8px;
-    padding: 0.6em 0.2em;
-}
-</style>
-""", unsafe_allow_html=True)
+    st.markdown("""
+    <style>
+    div[data-testid="stHorizontalBlock"] div[data-testid="column"] button {
+        width: 100%;
+        white-space: nowrap !important;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-weight: 600;
+        border-radius: 8px;
+          padding: 0.6em 0.2em;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
 # Helper function to display buttons in a grid layout
-def button_grid(labels, buttons_per_row=4, prefix="btn"):
-    rows = [labels[i:i + buttons_per_row] for i in range(0, len(labels), buttons_per_row)]
-    for row in rows:
-        cols = st.columns(len(row))
-        for i, label in enumerate(row):
-            if cols[i].button(label, key=f"{prefix}_{label}"):
-                return label
-    return None
+    def button_grid(labels, buttons_per_row=4, prefix="btn"):
+        rows = [labels[i:i + buttons_per_row] for i in range(0, len(labels), buttons_per_row)]
+        for row in rows:
+            cols = st.columns(len(row))
+            for i, label in enumerate(row):
+                if cols[i].button(label, key=f"{prefix}_{label}"):
+                    return label
+        return None
 
 # Use the grid helper
-pitch_types = ["Fastball", "Slider", "Curveball", "Changeup", "Cutter", "Splitter", "Other"]
-selected_pitch = button_grid(pitch_types, buttons_per_row=4, prefix="pt")
+    pitch_types = ["Fastball", "Slider", "Curveball", "Changeup", "Cutter", "Splitter", "Other"]
+    selected_pitch = button_grid(pitch_types, buttons_per_row=4, prefix="pt")
 
-if selected_pitch:
-    st.session_state["quick_pitch_type"] = selected_pitch
+    if selected_pitch:
+        st.session_state["quick_pitch_type"] = selected_pitch
 
-st.caption(f"Selected type: {st.session_state.get('quick_pitch_type', '—')}")
+    st.caption(f"Selected type: {st.session_state.get('quick_pitch_type', '—')}")
 
     # --- Pitch Called Buttons ---
     st.subheader("Pitch Result")
