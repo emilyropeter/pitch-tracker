@@ -261,19 +261,24 @@ else:
     st.subheader("Additional Info")
     colA, colB, colC, colD = st.columns(4)
     with colA:
-        st.session_state["quick_zone"] = st.selectbox("Zone (optional)", ["None"] + [str(i) for i in range(1, 15)], key="quick_zone_sel")
+        zone_val = st.selectbox("Zone (optional)", ["None"] + [str(i) for i in range(1, 15)],
+                                key="quick_zone_sel", index=(int(st.session_state.get("quick_zone", "0")) if st.session_state.get("quick_zone") not in [None, "None"] else 0))
     with colB:
-        st.session_state["quick_vel"] = st.number_input("Velocity (mph, optional)", min_value=0.0, step=0.1, value=float(st.session_state.get("quick_vel", 0.0)), key="quick_vel_inp")
+        vel_val = st.number_input("Velocity (mph, optional)", min_value=0.0, step=0.1,
+                                  value=float(st.session_state.get("quick_vel", 0.0)), key="quick_vel_inp")
     with colC:
-        st.session_state["quick_tagged"] = st.selectbox("Tagged Hit", ["None", "Bunt", "Flyball", "Groundball", "Linedrive"], key="quick_tagged")
+        tagged_val = st.selectbox("Tagged Hit", ["None", "Bunt", "Flyball", "Groundball", "Linedrive"], key="quick_tagged_sel")
     with colD:
-        st.session_state["quick_hitdir"] = st.selectbox("Hit Direction", ["None", "3-4 Hole", "5-6 Hole", "Catcher", "Center Field", "First Base", "Left Center", "Left Field", "Middle", "Pitcher", "Right Center", "Right Field", "Second Base", "Short Stop", "Third Base"], key="quick_hitdir")
+        hitdir_val = st.selectbox("Hit Direction", ["None", "3-4 Hole", "5-6 Hole", "Catcher", "Center Field",
+                                                    "First Base", "Left Center", "Left Field", "Middle", "Pitcher",
+                                                    "Right Center", "Right Field", "Second Base", "Short Stop", "Third Base"],
+                                  key="quick_hitdir_sel")
 
-    st.session_state["quick_kpi"] = st.text_input("KPI / Notes (optional)", key="quick_kpi")
+    kpi_val = st.text_input("KPI / Notes (optional)", key="quick_kpi_inp")
 
     # --- Submit Pitch ---
     if st.button("Submit Pitch"):
-        if not st.session_state["quick_pitch_type"] or not st.session_state["quick_pitch_called"]:
+        if not st.session_state.get("quick_pitch_type") or not st.session_state.get("quick_pitch_called"):
             st.warning("Pick a Pitch Type and a Pitch Called first.")
         else:
             called = st.session_state["quick_pitch_called"]
@@ -289,9 +294,9 @@ else:
                 st.session_state["strikes"] += 1
 
             wel = compute_wel(st.session_state["balls"], st.session_state["strikes"])
-            zone_val = None if st.session_state["quick_zone"] == "None" else int(st.session_state["quick_zone"])
-            tagged_val = None if st.session_state["quick_tagged"] == "None" else st.session_state["quick_tagged"]
-            hitdir_val = None if st.session_state["quick_hitdir"] == "None" else st.session_state["quick_hitdir"]
+            zone_num = None if zone_val == "None" else int(zone_val)
+            tagged_hit = None if tagged_val == "None" else tagged_val
+            hit_dir = None if hitdir_val == "None" else hitdir_val
 
             # Insert pitch into Supabase
             r = insert_pitch(
@@ -299,40 +304,41 @@ else:
                 pitch_no=st.session_state["next_pitch_no"],
                 pitch_of_ab=st.session_state["next_pitch_of_ab"],
                 pitch_type=st.session_state["quick_pitch_type"],
-                velocity=st.session_state["quick_vel"],
-                zone=zone_val,
+                velocity=vel_val,
+                zone=zone_num,
                 pitch_called=called,
                 balls=st.session_state["balls"],
                 strikes=st.session_state["strikes"],
                 wel=wel,
-                tagged=tagged_val,
-                hitdir=hitdir_val,
-                kpi=st.session_state["quick_kpi"]
+                tagged=tagged_hit,
+                hitdir=hit_dir,
+                kpi=kpi_val
             )
 
             if r.data:
                 pid = r.data[0]["PitchID"]
                 st.session_state["pitch_history"].append(pid)
                 st.session_state["last_saved_pitch_id"] = pid
-                batter_name = next((x["Name"] for x in st.session_state["lineup"] if x["PlayerID"] == st.session_state["current_batter_id"]), "Unknown")
-                summary_line = f"{batter_name}: {st.session_state['quick_pitch_type']} {st.session_state['quick_vel']} — {called} ({st.session_state['balls']}-{st.session_state['strikes']})"
+                batter_name = next((x["Name"] for x in st.session_state["lineup"]
+                                    if x["PlayerID"] == st.session_state["current_batter_id"]), "Unknown")
+                summary_line = f"{batter_name}: {st.session_state['quick_pitch_type']} {vel_val} — {called} ({st.session_state['balls']}-{st.session_state['strikes']})"
                 st.session_state["last_pitch_summary"] = summary_line
                 add_to_summary(f"Batter {batter_name} | Pitch {st.session_state['next_pitch_no']}: {st.session_state['quick_pitch_type']} — {called} | {st.session_state['balls']}-{st.session_state['strikes']}")
 
-                # Reset fields
+                # Reset selections and update next pitch number
                 st.session_state["quick_pitch_type"] = None
                 st.session_state["quick_pitch_called"] = None
-                st.session_state["quick_vel"] = 0.0
                 st.session_state["quick_zone"] = "None"
-                st.session_state["quick_tagged"] = "None"
-                st.session_state["quick_hitdir"] = "None"
-                st.session_state["quick_kpi"] = ""
+                st.session_state["quick_vel"] = 0.0
+                st.session_state["quick_tagged_sel"] = "None"
+                st.session_state["quick_hitdir_sel"] = "None"
+                st.session_state["quick_kpi_inp"] = ""
 
-                # Update next pitch numbers immediately
                 refresh_pitch_numbers()
                 st.success("Pitch saved.")
             else:
                 st.error("Pitch not saved. Check DB schema.")
+
 
 # ---------------------------------------------------------
 # 3 — Finish AtBat (result + LeadOffOn here)
