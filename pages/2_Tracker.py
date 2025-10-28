@@ -358,14 +358,17 @@ else:
                 st.session_state["quick_pitch_called"] = None
                 st.session_state["quick_zone"] = "None"
                 st.session_state["quick_vel"] = 0.0
-                st.session_state["quick_tagged_sel"] = "None"
-                st.session_state["quick_hitdir_sel"] = "None"
-                st.session_state["quick_kpi_inp"] = ""
+
+                # Reset widget values safely (use local state updates)
+                for key in ["quick_tagged_sel", "quick_hitdir_sel", "quick_kpi_inp"]:
+                    if key in st.session_state:
+                        del st.session_state[key]
 
                 refresh_pitch_numbers()
                 st.success("Pitch saved.")
-            else:
-                st.error("Pitch not saved. Check DB schema.")
+
+                else:
+                    st.error("Pitch not saved. Check DB schema.")
 
 
 # ---------------------------------------------------------
