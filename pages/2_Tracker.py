@@ -367,8 +367,8 @@ else:
                 refresh_pitch_numbers()
                 st.success("Pitch saved.")
 
-                else:
-                    st.error("Pitch not saved. Check DB schema.")
+             else:
+                 st.error("Pitch not saved. Check DB schema.")
 
 
 # ---------------------------------------------------------
