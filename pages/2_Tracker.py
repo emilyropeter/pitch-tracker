@@ -242,10 +242,12 @@ else:
     # --- Pitch Type Buttons ---
     st.subheader("Pitch Type")
     pitch_types = ["Fastball", "Slider", "Curveball", "Changeup", "Cutter", "Splitter", "Other"]
-    pt_cols = st.columns(len(pitch_types))
+    pt_cols = st.columns([1, 1, 1, 1, 1, 1, 1])  # each button gets equal width, enough to fit long words
+
     for i, t in enumerate(pitch_types):
         if pt_cols[i].button(t, key=f"pt_{t}"):
             st.session_state["quick_pitch_type"] = t
+
     st.caption(f"Selected type: {st.session_state['quick_pitch_type'] or '—'}")
 
     # --- Pitch Called Buttons ---
