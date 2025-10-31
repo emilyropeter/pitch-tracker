@@ -68,8 +68,16 @@ with st.expander("1 — Game Setup & Lineup", expanded=True):
         games = supabase.table("Games").select(
             "GameID, GameDate, HomeTeam, AwayTeam"
         ).order("GameDate", desc=True).execute().data or []
-        game_map = {f"{g['GameDate']} - {g['HomeTeam']} vs {g['AwayTeam']}": g["GameID"] for g in games}
-        sel_game = st.selectbox("Select Game", ["-- Add New Game --"] + list(game_map.keys()))
+        game_map = {
+            f"{g['GameDate']} - {g['HomeTeam']} vs {g['AwayTeam']}": g["GameID"]
+            for g in games
+        }
+
+        sel_game = st.selectbox(
+            "Select Game",
+            ["-- Add New Game --"] + list(game_map.keys())
+        )
+
         if sel_game == "-- Add New Game --":
             home = st.text_input("Home Team")
             away = st.text_input("Away Team")
@@ -78,7 +86,7 @@ with st.expander("1 — Game Setup & Lineup", expanded=True):
                 gid = create_game(home, away, gamedate)
                 if gid:
                     st.success("Game created. Re-open select to pick it.")
-                    st.rerun()
+                    st.experimental_rerun()
                 else:
                     st.error("Failed to create game.")
             st.stop()
@@ -105,7 +113,10 @@ with st.expander("1 — Game Setup & Lineup", expanded=True):
         if st.button("Add Hitter"):
             if not hname:
                 st.warning("Enter a name.")
-            elif any(p["Name"].lower() == hname.lower() for p in st.session_state["lineup"]):
+            elif any(
+                p["Name"].lower() == hname.lower()
+                for p in st.session_state["lineup"]
+            ):
                 st.error("⚠️ Batter already in lineup.")
             else:
                 pid = ensure_player(hname, bats=hbats)
@@ -118,9 +129,9 @@ with st.expander("1 — Game Setup & Lineup", expanded=True):
                 })
                 st.success(f"Added {hname} as #{order}")
                 # reset fields
-                st.session_state.hname = ""
-                st.session_state.hbats = "Right"
-                st.rerun()
+                st.session_state["hname"] = ""
+                st.session_state["hbats"] = "Right"
+                st.experimental_rerun()
 
         # Display lineup list
         for i, p in enumerate(st.session_state["lineup"]):
@@ -128,7 +139,7 @@ with st.expander("1 — Game Setup & Lineup", expanded=True):
             c1.write(f"{p['Order']}. {p['Name']} ({p['Bats']})")
             if c2.button("❌", key=f"delh{i}"):
                 st.session_state["lineup"].pop(i)
-                st.rerun()
+                st.experimental_rerun()
 
     # ----------- Pitchers -----------
     with col3:
@@ -145,7 +156,10 @@ with st.expander("1 — Game Setup & Lineup", expanded=True):
         if st.button("Add Pitcher"):
             if not pname:
                 st.warning("Enter pitcher name.")
-            elif any(p["Name"].lower() == pname.lower() for p in st.session_state["pitchers"]):
+            elif any(
+                p["Name"].lower() == pname.lower()
+                for p in st.session_state["pitchers"]
+            ):
                 st.error("⚠️ Pitcher already added.")
             else:
                 pid = ensure_player(pname, throws=pthrows)
@@ -156,9 +170,9 @@ with st.expander("1 — Game Setup & Lineup", expanded=True):
                 })
                 st.success(f"Added pitcher {pname}")
                 # reset fields
-                st.session_state.pname = ""
-                st.session_state.pthrows = "Right"
-                st.rerun()
+                st.session_state["pname"] = ""
+                st.session_state["pthrows"] = "Right"
+                st.experimental_rerun()
 
         # Display pitcher list
         for j, q in enumerate(st.session_state["pitchers"]):
@@ -166,7 +180,7 @@ with st.expander("1 — Game Setup & Lineup", expanded=True):
             c1.write(f"{q['Name']} ({q['Throws']})")
             if c2.button("❌", key=f"delp{j}"):
                 st.session_state["pitchers"].pop(j)
-                st.rerun()
+                st.experimental_rerun()
 
 
 # -----------------------------
