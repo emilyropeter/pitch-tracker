@@ -132,9 +132,10 @@ with st.expander("1 — Game Setup & Lineup", expanded=True):
 
         # safely reset hitter inputs after rerun
         if st.session_state.get("reset_hitter_inputs"):
-            st.session_state["hname"] = ""
-            st.session_state["hbats"] = "Right"
+            st.session_state.pop("hname", None)
+            st.session_state.pop("hbats", None)
             del st.session_state["reset_hitter_inputs"]
+            st.rerun()
 
         # Display lineup list
         for i, p in enumerate(st.session_state["lineup"]):
@@ -177,9 +178,10 @@ with st.expander("1 — Game Setup & Lineup", expanded=True):
 
         # safely reset pitcher inputs after rerun
         if st.session_state.get("reset_pitcher_inputs"):
-            st.session_state["pname"] = ""
-            st.session_state["pthrows"] = "Right"
+            st.session_state.pop("pname", None)
+            st.session_state.pop("pthrows", None)
             del st.session_state["reset_pitcher_inputs"]
+            st.rerun()
 
         # Display pitcher list
         for j, q in enumerate(st.session_state["pitchers"]):
