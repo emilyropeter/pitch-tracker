@@ -366,6 +366,8 @@ else:
                         st.success("Runner event saved.")
                     else:
                         st.error("Failed to save runner event
+                except Exception as e:
+                    st.error(f"Insert failed: {e}")
 
 # ---------------------------------------------------------
 # 5 — Running Summary
