@@ -82,17 +82,24 @@ with st.expander("1 — Game Setup & Lineup", expanded=True):
 
     with col2:
         st.subheader("Lineup")
-        hname = st.text_input("Hitter name")
-        hbats = st.selectbox("Bats", ["Right", "Left", "Switch"])
+
+        # single set of input widgets with session keys
+        hname = st.text_input("Hitter name", key="hname")
+        hbats = st.selectbox("Bats", ["Right", "Left", "Switch"], key="hbats")
+
+        existing_players = supabase.table("Players").select("Name").execute().data or []
+        all_names = [p["Name"] for p in existing_players]
+
         if hname:
             matches = [n for n in all_names if hname.lower() in n.lower()]
             if matches:
                 st.caption("Existing players: " + ", ".join(matches[:5]))
+
         if st.button("Add Hitter"):
             if not hname:
-                st.warning("Enter a name.")
+                 st.warning("Enter a name.")
             elif any(p["Name"].lower() == hname.lower() for p in st.session_state["lineup"]):
-                st.error("⚠️ Batter already in lineup.")
+                  st.error("⚠️ Batter already in lineup.")
             else:
                 pid = ensure_player(hname, bats=hbats)
                 order = len(st.session_state["lineup"]) + 1
@@ -103,33 +110,26 @@ with st.expander("1 — Game Setup & Lineup", expanded=True):
                     "PlayerID": pid
                 })
                 st.success(f"Added {hname} as #{order}")
-                # reset input fields
-                st.session_state["hname"] = ""
-                st.session_state["hbats"] = "Right"
+                # reset fields
+                st.session_state.hname = ""
+                st.session_state.hbats = "Right"
                 st.rerun()
 
-        # define the input widgets with session state keys
-        hname = st.text_input("Hitter name", key="hname")
-        hbats = st.selectbox("Bats", ["Right", "Left", "Switch"], key="hbats")
-
-        for i, p in enumerate(st.session_state["lineup"]):
-            c1, c2 = st.columns([6,1])
-            c1.write(f"{p['Order']}. {p['Name']} ({p['Bats']})")
-            if c2.button("❌", key=f"delh{i}"):
-                st.session_state["lineup"].pop(i)
-                st.rerun()
 
     # ----------- Pitchers -----------
     with col3:
         st.subheader("Pitchers")
-        pname = st.text_input("Pitcher name")
-        pthrows = st.selectbox("Throws", ["Right", "Left"])
+
+        pname = st.text_input("Pitcher name", key="pname")
+        pthrows = st.selectbox("Throws", ["Right", "Left"], key="pthrows")
+
         if pname:
             matches = [n for n in all_names if pname.lower() in n.lower()]
             if matches:
                 st.caption("Existing players: " + ", ".join(matches[:5]))
+
         if st.button("Add Pitcher"):
-            if not pname:
+             if not pname:
                 st.warning("Enter pitcher name.")
             elif any(p["Name"].lower() == pname.lower() for p in st.session_state["pitchers"]):
                 st.error("⚠️ Pitcher already added.")
@@ -140,22 +140,12 @@ with st.expander("1 — Game Setup & Lineup", expanded=True):
                     "Throws": pthrows,
                     "PlayerID": pid
                 })
-                st.success(f"Added pitcher {pname}")
-                # reset input fields
-                st.session_state["pname"] = ""
-                st.session_state["pthrows"] = "Right"
+                 st.success(f"Added pitcher {pname}")
+                # reset fields
+                st.session_state.pname = ""
+                st.session_state.pthrows = "Right"
                 st.rerun()
 
-        # define with keys
-        pname = st.text_input("Pitcher name", key="pname")
-        pthrows = st.selectbox("Throws", ["Right", "Left"], key="pthrows")
-
-        for j, q in enumerate(st.session_state["pitchers"]):
-            c1, c2 = st.columns([6,1])
-            c1.write(f"{q['Name']} ({q['Throws']})")
-            if c2.button("❌", key=f"delp{j}"):
-                st.session_state["pitchers"].pop(j)
-                st.rerun()
 
 # -----------------------------
 # 2 — Start Game Button
