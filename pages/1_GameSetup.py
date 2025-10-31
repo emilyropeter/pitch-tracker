@@ -86,7 +86,7 @@ with st.expander("1 — Game Setup & Lineup", expanded=True):
                 gid = create_game(home, away, gamedate)
                 if gid:
                     st.success("Game created. Re-open select to pick it.")
-                    st.experimental_rerun()
+                    st.rerun()
                 else:
                     st.error("Failed to create game.")
             st.stop()
@@ -101,7 +101,6 @@ with st.expander("1 — Game Setup & Lineup", expanded=True):
     with col2:
         st.subheader("Lineup")
 
-        # input widgets
         hname = st.text_input("Hitter name", key="hname")
         hbats = st.selectbox("Bats", ["Right", "Left", "Switch"], key="hbats")
 
@@ -128,11 +127,10 @@ with st.expander("1 — Game Setup & Lineup", expanded=True):
                     "PlayerID": pid
                 })
                 st.success(f"Added {hname} as #{order}")
-                # flag to reset next run
                 st.session_state["reset_hitter_inputs"] = True
-                st.experimental_rerun()
+                st.rerun()
 
-        # reset after rerun
+        # safely reset hitter inputs after rerun
         if st.session_state.get("reset_hitter_inputs"):
             st.session_state["hname"] = ""
             st.session_state["hbats"] = "Right"
@@ -144,7 +142,7 @@ with st.expander("1 — Game Setup & Lineup", expanded=True):
             c1.write(f"{p['Order']}. {p['Name']} ({p['Bats']})")
             if c2.button("❌", key=f"delh{i}"):
                 st.session_state["lineup"].pop(i)
-                st.experimental_rerun()
+                st.rerun()
 
     # ----------- Pitchers -----------
     with col3:
@@ -174,11 +172,10 @@ with st.expander("1 — Game Setup & Lineup", expanded=True):
                     "PlayerID": pid
                 })
                 st.success(f"Added pitcher {pname}")
-                # flag to reset next run
                 st.session_state["reset_pitcher_inputs"] = True
-                st.experimental_rerun()
+                st.rerun()
 
-        # reset after rerun
+        # safely reset pitcher inputs after rerun
         if st.session_state.get("reset_pitcher_inputs"):
             st.session_state["pname"] = ""
             st.session_state["pthrows"] = "Right"
@@ -190,7 +187,7 @@ with st.expander("1 — Game Setup & Lineup", expanded=True):
             c1.write(f"{q['Name']} ({q['Throws']})")
             if c2.button("❌", key=f"delp{j}"):
                 st.session_state["pitchers"].pop(j)
-                st.experimental_rerun()
+                st.rerun()
 
 
 # -----------------------------
