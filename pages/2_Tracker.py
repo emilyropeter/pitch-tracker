@@ -196,6 +196,34 @@ with col3:
 # ---------------------------------------------------------
 st.header("2 — Pitch Entry")
 
+# --- Safe Insert Function (with debug + schema cleanup) ---
+def insert_pitch(atbat_id, pitch_no, pitch_of_ab, pitch_type, velocity, zone,
+                 pitch_called, balls, strikes, wel, tagged, hitdir, kpi):
+    payload = {
+        "AtBatID": int(atbat_id),
+        "PitchNo": int(pitch_no),
+        "PitchOfAB": int(pitch_of_ab),
+        "PitchType": pitch_type,
+        "Velocity": float(velocity) if velocity else None,
+        "Zone": int(zone) if zone not in [None, "None", ""] else None,
+        "PitchCalled": pitch_called,
+        "WEL": wel,
+        "Balls": int(balls),
+        "Strikes": int(strikes),
+        "TaggedHit": tagged or None,
+        "HitDirection": hitdir or None,
+        "KPI": kpi or None
+    }
+    # Drop None values so Supabase doesn’t reject
+    payload = {k: v for k, v in payload.items() if v is not None}
+    try:
+        return supabase.table("Pitches").insert(payload).execute()
+    except Exception as e:
+        st.error(f"Insert failed: {e}")
+        st.write("DEBUG payload:", payload)
+        raise
+
+# --- Main UI ---
 if not st.session_state["current_atbat_id"]:
     st.info("Start an AtBat to enter pitches.")
 else:
@@ -222,7 +250,6 @@ else:
                 try:
                     supabase.table("Pitches").delete().eq("PitchID", last_pid).execute()
 
-                    # Recalculate balls/strikes from remaining pitches
                     rec = (
                         supabase.table("Pitches")
                         .select("Balls, Strikes")
@@ -240,7 +267,6 @@ else:
                         st.session_state["balls"] = 0
                         st.session_state["strikes"] = 0
 
-                    # Clear last pitch info and refresh pitch number display
                     st.session_state["last_pitch_summary"] = None
                     refresh_pitch_numbers()
                     st.success("Undo successful — pitch removed and count updated.")
@@ -252,7 +278,7 @@ else:
     # --- Pitch Type Section ---
     st.subheader("Pitch Type")
 
-    # 💅 Custom CSS to make buttons wider and highlight selected one
+    # 💅 CSS for wider buttons + green highlight
     st.markdown("""
     <style>
     div[data-testid="stHorizontalBlock"] div[data-testid="column"] button {
@@ -264,7 +290,6 @@ else:
         border-radius: 8px;
         padding: 0.6em 0.2em;
     }
-    /* green shading for active pitch/result buttons */
     button[kind="secondary"] {
         background-color: #2e7d32 !important;
         color: white !important;
@@ -273,7 +298,7 @@ else:
     </style>
     """, unsafe_allow_html=True)
 
-    # Helper function for button grid with toggle behavior
+    # Button grid helper (toggleable)
     def button_grid(labels, buttons_per_row=4, prefix="btn", session_key=None):
         selected = st.session_state.get(session_key)
         rows = [labels[i:i + buttons_per_row] for i in range(0, len(labels), buttons_per_row)]
@@ -282,11 +307,7 @@ else:
             for i, label in enumerate(row):
                 is_selected = (selected == label)
                 if cols[i].button(label, key=f"{prefix}_{label}", type="secondary" if is_selected else "primary"):
-                    # Toggle selection
-                    if is_selected:
-                        st.session_state[session_key] = None
-                    else:
-                        st.session_state[session_key] = label
+                    st.session_state[session_key] = None if is_selected else label
                     st.rerun()
 
     # --- Pitch Type Buttons ---
@@ -294,7 +315,7 @@ else:
     button_grid(pitch_types, buttons_per_row=4, prefix="pt", session_key="quick_pitch_type")
     st.caption(f"Selected type: {st.session_state.get('quick_pitch_type', '—')}")
 
-    # --- Pitch Called Buttons ---
+    # --- Pitch Result Buttons ---
     st.subheader("Pitch Result")
     call_options = ["Strike Called", "Strike Swing Miss", "Ball Called", "Foul Ball", "In Play"]
     button_grid(call_options, buttons_per_row=5, prefix="pc", session_key="quick_pitch_called")
@@ -326,7 +347,7 @@ else:
         else:
             called = st.session_state["quick_pitch_called"]
 
-            # Update count automatically
+            # Auto-update count
             if called == "Ball Called":
                 st.session_state["balls"] = min(4, st.session_state["balls"] + 1)
             elif called in ["Strike Called", "Strike Swing Miss"]:
@@ -341,7 +362,7 @@ else:
             tagged_hit = None if tagged_val == "None" else tagged_val
             hit_dir = None if hitdir_val == "None" else hitdir_val
 
-            # Insert pitch into Supabase
+            # Safe insert
             r = insert_pitch(
                 atbat_id=atbat_id,
                 pitch_no=st.session_state["next_pitch_no"],
@@ -363,18 +384,16 @@ else:
                 st.session_state["pitch_history"].append(pid)
                 st.session_state["last_saved_pitch_id"] = pid
                 batter_name = next((x["Name"] for x in st.session_state["lineup"]
-                        if x["PlayerID"] == st.session_state["current_batter_id"]), "Unknown")
+                                    if x["PlayerID"] == st.session_state["current_batter_id"]), "Unknown")
                 summary_line = f"{batter_name}: {st.session_state['quick_pitch_type']} {vel_val} — {called} ({st.session_state['balls']}-{st.session_state['strikes']})"
                 st.session_state["last_pitch_summary"] = summary_line
                 add_to_summary(f"Batter {batter_name} | Pitch {st.session_state['next_pitch_no']}: {st.session_state['quick_pitch_type']} — {called} | {st.session_state['balls']}-{st.session_state['strikes']}")
 
-                # Reset selections and update next pitch number
+                # Reset selections + next pitch number
                 st.session_state["quick_pitch_type"] = None
                 st.session_state["quick_pitch_called"] = None
                 st.session_state["quick_zone"] = "None"
                 st.session_state["quick_vel"] = 0.0
-
-                # Reset widget values safely (use local state updates)
                 for key in ["quick_tagged_sel", "quick_hitdir_sel", "quick_kpi_inp"]:
                     if key in st.session_state:
                         del st.session_state[key]
@@ -383,6 +402,7 @@ else:
                 st.success("Pitch saved.")
             else:
                 st.error("Pitch not saved. Check DB schema.")
+
 
 # ---------------------------------------------------------
 # 3 — Finish AtBat (result + LeadOffOn here)
