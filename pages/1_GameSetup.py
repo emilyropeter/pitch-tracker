@@ -71,4 +71,112 @@ with st.expander("1 — Game Setup & Lineup", expanded=True):
         game_map = {f"{g['GameDate']} - {g['HomeTeam']} vs {g['AwayTeam']}": g["GameID"] for g in games}
         sel_game = st.selectbox("Select Game", ["-- Add New Game --"] + list(game_map.keys()))
         if sel_game == "-- Add New Game --":
-            hom
+            home = st.text_input("Home Team")
+            away = st.text_input("Away Team")
+            gamedate = st.date_input("Game Date", value=date.today())
+            if st.button("Create Game"):
+                gid = create_game(home, away, gamedate)
+                if gid:
+                    st.success("Game created. Re-open select to pick it.")
+                    st.rerun()
+                else:
+                    st.error("Failed to create game.")
+            st.stop()
+        else:
+            st.session_state["selected_game_id"] = game_map[sel_game]
+            st.info(f"Selected Game: {sel_game}")
+
+    # ----------- Lineup (Hitters) -----------
+    existing_players = supabase.table("Players").select("Name").execute().data or []
+    all_names = [p["Name"] for p in existing_players]
+
+    with col2:
+        st.subheader("Lineup")
+
+        # single set of input widgets with session keys
+        hname = st.text_input("Hitter name", key="hname")
+        hbats = st.selectbox("Bats", ["Right", "Left", "Switch"], key="hbats")
+
+        if hname:
+            matches = [n for n in all_names if hname.lower() in n.lower()]
+            if matches:
+                st.caption("Existing players: " + ", ".join(matches[:5]))
+
+        if st.button("Add Hitter"):
+            if not hname:
+                st.warning("Enter a name.")
+            elif any(p["Name"].lower() == hname.lower() for p in st.session_state["lineup"]):
+                st.error("⚠️ Batter already in lineup.")
+            else:
+                pid = ensure_player(hname, bats=hbats)
+                order = len(st.session_state["lineup"]) + 1
+                st.session_state["lineup"].append({
+                    "Name": hname,
+                    "Bats": hbats,
+                    "Order": order,
+                    "PlayerID": pid
+                })
+                st.success(f"Added {hname} as #{order}")
+                # reset fields
+                st.session_state.hname = ""
+                st.session_state.hbats = "Right"
+                st.rerun()
+
+        # Display lineup list
+        for i, p in enumerate(st.session_state["lineup"]):
+            c1, c2 = st.columns([6, 1])
+            c1.write(f"{p['Order']}. {p['Name']} ({p['Bats']})")
+            if c2.button("❌", key=f"delh{i}"):
+                st.session_state["lineup"].pop(i)
+                st.rerun()
+
+    # ----------- Pitchers -----------
+    with col3:
+        st.subheader("Pitchers")
+
+        pname = st.text_input("Pitcher name", key="pname")
+        pthrows = st.selectbox("Throws", ["Right", "Left"], key="pthrows")
+
+        if pname:
+            matches = [n for n in all_names if pname.lower() in n.lower()]
+            if matches:
+                st.caption("Existing players: " + ", ".join(matches[:5]))
+
+        if st.button("Add Pitcher"):
+            if not pname:
+                st.warning("Enter pitcher name.")
+            elif any(p["Name"].lower() == pname.lower() for p in st.session_state["pitchers"]):
+                st.error("⚠️ Pitcher already added.")
+            else:
+                pid = ensure_player(pname, throws=pthrows)
+                st.session_state["pitchers"].append({
+                    "Name": pname,
+                    "Throws": pthrows,
+                    "PlayerID": pid
+                })
+                st.success(f"Added pitcher {pname}")
+                # reset fields
+                st.session_state.pname = ""
+                st.session_state.pthrows = "Right"
+                st.rerun()
+
+        # Display pitcher list
+        for j, q in enumerate(st.session_state["pitchers"]):
+            c1, c2 = st.columns([6, 1])
+            c1.write(f"{q['Name']} ({q['Throws']})")
+            if c2.button("❌", key=f"delp{j}"):
+                st.session_state["pitchers"].pop(j)
+                st.rerun()
+
+
+# -----------------------------
+# 2 — Start Game Button
+# -----------------------------
+st.markdown("---")
+if st.session_state["selected_game_id"]:
+    if st.button("🚀 Start Game"):
+        st.session_state["game_active"] = True
+        st.success("Game started — switching to Tracker!")
+        st.switch_page("pages/2_Tracker.py")
+else:
+    st.info("Select or create a game first.")
