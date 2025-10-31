@@ -252,7 +252,7 @@ else:
     # --- Pitch Type Section ---
     st.subheader("Pitch Type")
 
-# 💅 Custom CSS to make buttons wider and prevent word wrapping
+    # 💅 Custom CSS to make buttons wider and highlight selected one
     st.markdown("""
     <style>
     div[data-testid="stHorizontalBlock"] div[data-testid="column"] button {
@@ -262,38 +262,43 @@ else:
         text-overflow: ellipsis;
         font-weight: 600;
         border-radius: 8px;
-          padding: 0.6em 0.2em;
+        padding: 0.6em 0.2em;
+    }
+    /* green shading for active pitch/result buttons */
+    button[kind="secondary"] {
+        background-color: #2e7d32 !important;
+        color: white !important;
+        border: 1px solid #1b5e20 !important;
     }
     </style>
     """, unsafe_allow_html=True)
 
-# Helper function to display buttons in a grid layout
-    def button_grid(labels, buttons_per_row=4, prefix="btn"):
+    # Helper function for button grid with toggle behavior
+    def button_grid(labels, buttons_per_row=4, prefix="btn", session_key=None):
+        selected = st.session_state.get(session_key)
         rows = [labels[i:i + buttons_per_row] for i in range(0, len(labels), buttons_per_row)]
         for row in rows:
             cols = st.columns(len(row))
             for i, label in enumerate(row):
-                if cols[i].button(label, key=f"{prefix}_{label}"):
-                    return label
-        return None
+                is_selected = (selected == label)
+                if cols[i].button(label, key=f"{prefix}_{label}", type="secondary" if is_selected else "primary"):
+                    # Toggle selection
+                    if is_selected:
+                        st.session_state[session_key] = None
+                    else:
+                        st.session_state[session_key] = label
+                    st.rerun()
 
-# Use the grid helper
+    # --- Pitch Type Buttons ---
     pitch_types = ["Fastball", "Slider", "Curveball", "Changeup", "Cutter", "Splitter", "Other"]
-    selected_pitch = button_grid(pitch_types, buttons_per_row=4, prefix="pt")
-
-    if selected_pitch:
-        st.session_state["quick_pitch_type"] = selected_pitch
-
+    button_grid(pitch_types, buttons_per_row=4, prefix="pt", session_key="quick_pitch_type")
     st.caption(f"Selected type: {st.session_state.get('quick_pitch_type', '—')}")
 
     # --- Pitch Called Buttons ---
     st.subheader("Pitch Result")
     call_options = ["Strike Called", "Strike Swing Miss", "Ball Called", "Foul Ball", "In Play"]
-    pc_cols = st.columns(len(call_options))
-    for i, c in enumerate(call_options):
-        if pc_cols[i].button(c, key=f"pc_{c}"):
-            st.session_state["quick_pitch_called"] = c
-    st.caption(f"Selected called: {st.session_state['quick_pitch_called'] or '—'}")
+    button_grid(call_options, buttons_per_row=5, prefix="pc", session_key="quick_pitch_called")
+    st.caption(f"Selected called: {st.session_state.get('quick_pitch_called', '—')}")
 
     # --- Additional Info Section ---
     st.subheader("Additional Info")
@@ -369,7 +374,7 @@ else:
                 st.session_state["quick_zone"] = "None"
                 st.session_state["quick_vel"] = 0.0
 
-    # Reset widget values safely (use local state updates)
+                # Reset widget values safely (use local state updates)
                 for key in ["quick_tagged_sel", "quick_hitdir_sel", "quick_kpi_inp"]:
                     if key in st.session_state:
                         del st.session_state[key]
@@ -378,8 +383,6 @@ else:
                 st.success("Pitch saved.")
             else:
                 st.error("Pitch not saved. Check DB schema.")
-
-
 
 # ---------------------------------------------------------
 # 3 — Finish AtBat (result + LeadOffOn here)
