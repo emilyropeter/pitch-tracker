@@ -101,7 +101,7 @@ with st.expander("1 — Game Setup & Lineup", expanded=True):
     with col2:
         st.subheader("Lineup")
 
-        # single set of input widgets with session keys
+        # input widgets
         hname = st.text_input("Hitter name", key="hname")
         hbats = st.selectbox("Bats", ["Right", "Left", "Switch"], key="hbats")
 
@@ -128,10 +128,15 @@ with st.expander("1 — Game Setup & Lineup", expanded=True):
                     "PlayerID": pid
                 })
                 st.success(f"Added {hname} as #{order}")
-                # reset fields
-                st.session_state["hname"] = ""
-                st.session_state["hbats"] = "Right"
+                # flag to reset next run
+                st.session_state["reset_hitter_inputs"] = True
                 st.experimental_rerun()
+
+        # reset after rerun
+        if st.session_state.get("reset_hitter_inputs"):
+            st.session_state["hname"] = ""
+            st.session_state["hbats"] = "Right"
+            del st.session_state["reset_hitter_inputs"]
 
         # Display lineup list
         for i, p in enumerate(st.session_state["lineup"]):
@@ -169,10 +174,15 @@ with st.expander("1 — Game Setup & Lineup", expanded=True):
                     "PlayerID": pid
                 })
                 st.success(f"Added pitcher {pname}")
-                # reset fields
-                st.session_state["pname"] = ""
-                st.session_state["pthrows"] = "Right"
+                # flag to reset next run
+                st.session_state["reset_pitcher_inputs"] = True
                 st.experimental_rerun()
+
+        # reset after rerun
+        if st.session_state.get("reset_pitcher_inputs"):
+            st.session_state["pname"] = ""
+            st.session_state["pthrows"] = "Right"
+            del st.session_state["reset_pitcher_inputs"]
 
         # Display pitcher list
         for j, q in enumerate(st.session_state["pitchers"]):
