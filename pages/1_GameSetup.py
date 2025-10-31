@@ -96,9 +96,22 @@ with st.expander("1 — Game Setup & Lineup", expanded=True):
             else:
                 pid = ensure_player(hname, bats=hbats)
                 order = len(st.session_state["lineup"]) + 1
-                st.session_state["lineup"].append({"Name": hname, "Bats": hbats, "Order": order, "PlayerID": pid})
+                st.session_state["lineup"].append({
+                    "Name": hname,
+                    "Bats": hbats,
+                    "Order": order,
+                    "PlayerID": pid
+                })
                 st.success(f"Added {hname} as #{order}")
+                # reset input fields
+                st.session_state["hname"] = ""
+                st.session_state["hbats"] = "Right"
                 st.rerun()
+
+        # define the input widgets with session state keys
+        hname = st.text_input("Hitter name", key="hname")
+        hbats = st.selectbox("Bats", ["Right", "Left", "Switch"], key="hbats")
+
         for i, p in enumerate(st.session_state["lineup"]):
             c1, c2 = st.columns([6,1])
             c1.write(f"{p['Order']}. {p['Name']} ({p['Bats']})")
@@ -122,9 +135,21 @@ with st.expander("1 — Game Setup & Lineup", expanded=True):
                 st.error("⚠️ Pitcher already added.")
             else:
                 pid = ensure_player(pname, throws=pthrows)
-                st.session_state["pitchers"].append({"Name": pname, "Throws": pthrows, "PlayerID": pid})
+                st.session_state["pitchers"].append({
+                    "Name": pname,
+                    "Throws": pthrows,
+                    "PlayerID": pid
+                })
                 st.success(f"Added pitcher {pname}")
+                # reset input fields
+                st.session_state["pname"] = ""
+                st.session_state["pthrows"] = "Right"
                 st.rerun()
+
+        # define with keys
+        pname = st.text_input("Pitcher name", key="pname")
+        pthrows = st.selectbox("Throws", ["Right", "Left"], key="pthrows")
+
         for j, q in enumerate(st.session_state["pitchers"]):
             c1, c2 = st.columns([6,1])
             c1.write(f"{q['Name']} ({q['Throws']})")
