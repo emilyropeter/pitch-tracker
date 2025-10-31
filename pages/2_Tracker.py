@@ -365,7 +365,7 @@ else:
                         add_to_summary(f"Runner {runner}: {event_type} | {arrow} | Out={payload['OutRecorded']}")
                         st.success("Runner event saved.")
                     else:
-                        st.error("Failed to save runner event
+                        st.error("Failed to save runner event.")
                 except Exception as e:
                     st.error(f"Insert failed: {e}")
 
