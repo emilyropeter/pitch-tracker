@@ -28,10 +28,24 @@ def ensure_player(name, team=None, throws=None, bats=None):
     return created.data[0]["PlayerID"] if created.data else None
 
 def create_atbat(game_id, batter_id, pitcher_id, inning):
-    payload = {"GameID": int(game_id), "BatterID": int(batter_id), "PitcherID": int(pitcher_id), "Inning": int(inning)}
-    st.write("DEBUG AtBat payload:", payload)
-    resp = supabase.table("AtBats").insert(payload).execute()
-    return resp.data[0]["AtBatID"] if resp.data else None
+    payload = {
+        "GameID": int(game_id),
+        "BatterID": int(batter_id),
+        "PitcherID": int(pitcher_id),
+        "Inning": int(inning),
+        # SAFE DEFAULTS for required fields that may not have defaults in DB
+        "LeadOff": False,
+        "LeadOffOn": False,
+        "RunsScored": 0,
+        "EarnedRuns": 0
+    }
+    try:
+        resp = supabase.table("AtBats").insert(payload).execute()
+        return resp.data[0]["AtBatID"] if resp.data else None
+    except Exception as e:
+        st.error(f"Insert failed for AtBat — check column defaults: {e}")
+        st.write("DEBUG payload:", payload)
+        raise
 
 def next_pitch_numbers_for(atbat_id):
     """Return (next global PitchNo, next PitchOfAB) with safe defaults."""
