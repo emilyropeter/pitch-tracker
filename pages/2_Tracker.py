@@ -33,19 +33,28 @@ def create_atbat(game_id, batter_id, pitcher_id, inning):
         "BatterID": int(batter_id),
         "PitcherID": int(pitcher_id),
         "Inning": int(inning),
-        # SAFE DEFAULTS for required fields that may not have defaults in DB
         "LeadOff": False,
         "LeadOffOn": False,
         "RunsScored": 0,
         "EarnedRuns": 0
     }
+
+    # Safety: strip any accidental primary key before insert
+    if "AtBatID" in payload:
+        del payload["AtBatID"]
+
     try:
+        # ensure Supabase handles ID generation
         resp = supabase.table("AtBats").insert(payload).execute()
-        return resp.data[0]["AtBatID"] if resp.data else None
+        if resp.data:
+            return resp.data[0]["AtBatID"]
+        else:
+            st.error("Insert succeeded but returned no data.")
+            return None
     except Exception as e:
-        st.error(f"Insert failed for AtBat — check column defaults: {e}")
+        st.error(f"Insert failed for AtBat — {e}")
         st.write("DEBUG payload:", payload)
-        raise
+        return None
 
 def next_pitch_numbers_for(atbat_id):
     """Return (next global PitchNo, next PitchOfAB) with safe defaults."""
