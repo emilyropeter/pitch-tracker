@@ -29,6 +29,7 @@ def ensure_player(name, team=None, throws=None, bats=None):
 
 def create_atbat(game_id, batter_id, pitcher_id, inning):
     payload = {"GameID": int(game_id), "BatterID": int(batter_id), "PitcherID": int(pitcher_id), "Inning": int(inning)}
+    st.write("DEBUG AtBat payload:", payload)
     resp = supabase.table("AtBats").insert(payload).execute()
     return resp.data[0]["AtBatID"] if resp.data else None
 
